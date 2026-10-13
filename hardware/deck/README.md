@@ -10,6 +10,19 @@ straight on the deck with no adapter plate.
 | `Platform_Deck_V3.1_S2.dxf` | the same plus the S2 holes: the file to cut |
 | `Platform_Deck_V3.1_S2_laser_32x18in.pdf` | the cut file ready for the Jacobs Hall Universal lasers: a 32 x 18 in artboard, 1:1, red hairlines (cut), part 20 mm from the top-left corner |
 | `Platform_Deck_V3.1_S2_check.png` | dimensioned check drawing |
+| `Platform_Deck_V3.1_S2sq_A.dxf` | **current deck (2026-10-13)**: S2 holes square to the deck, Hokuyo holes removed |
+| `Platform_Deck_V3.1_S2sq_B_slots.dxf` | same, but the eight rail-edge holes are 3 mm slots along the rail on a 127 mm outer span (the spacing measured on our BL-2s), with a half-round notch on the rear edge to tell it apart |
+| `Platform_Deck_V3.1_S2sq_sheet_32x18in.pdf` | one Jacobs sheet: deck A top-left, deck B below it with a loose triangle beside it, a full-height cut down the middle, and on the right half six 90 mm hex coasters, two cable combs, twelve M3 spacer rings and a 150 mm ruler blank |
+| `make_sheet.py` | generates the three files above from `Platform_Deck_V3.1_S2.dxf` |
+
+## Second cut (2026-10-13)
+The first deck (rotated S2) fitted the chassis and the lidar, but the rotated lidar looked wrong,
+so the Hokuyo UST/UTM holes are dropped and the S2 pattern is square: holes at (76.15, ±20.85)
+and (117.85, ±20.85), 3.4 mm. Lidar yaw offset in the TF is now zero. Deck B exists because the
+chassis standoffs measured about 127 mm apart against the deck's 123.85 mm; its slots cannot run
+inboard because the cable slot edge is only 3 mm away (y = 63.5), so they run along the rail.
+Everything else on the decks is unchanged from V3.1. Cutting the whole sheet in 0.25 in acrylic
+takes two passes, about 40 minutes.
 | `Powerboard_Adaptor_VX-V10.dxf` / `.stl` | the official "Powerboard Adaptor VX-V10" from the same Drive folder (Adaptor subfolder, 2024-07-30), untouched |
 | `Powerboard_Adaptor_VX-V10_laser_32x18in.pdf` | the adaptor as a Jacobs laser file, same artboard and convention as the deck |
 
