@@ -125,9 +125,9 @@ them: deck to adaptor as above, board to adaptor with four M3 × 8 and nuts.
 *Check:* the board's two switches are reachable with the deck on the car.
 
 ### 2.5 RPLidar S2  **OURS**
-Our deck has four holes for it (3.4 mm, in a 41.7 mm square turned 30 degrees). S2 on top,
-centred on the lobe; four **M3 × 10** screws from underneath. Not longer: the S2's holes are 4 mm
-deep. Its cable will exit 30 degrees off the rear line; that is expected.
+Our deck has four holes for it (3.4 mm, a 41.7 mm square centred on the lobe; the first deck had
+this square turned 30 degrees, the second cut has it straight). S2 on top, cable to the rear; four
+**M3 × 10** screws from underneath. Not longer: the S2's holes are 4 mm deep.
 *Check:* the S2 sits flat, can be spun by hand without touching anything, and nothing is in its
 scan plane (about 30 mm above the deck) except the antennas, which are behind it.
 
