@@ -81,28 +81,91 @@ sheet.append(('L', CX, 0, CX, SHEET_H))
 def hexagon(cx, cy, af):   # across-flats
     R = af/math.sqrt(3); pts=[(cx+R*math.cos(math.radians(60*k+30)), cy+R*math.sin(math.radians(60*k+30))) for k in range(6)]
     return [('L',pts[k][0],pts[k][1],pts[(k+1)%6][0],pts[(k+1)%6][1]) for k in range(6)]
-def comb(x0,y0,w,h,n,sw,sd):
-    """cable comb: rect with rounded bottom corners and n slots of width sw, depth sd, open at the top."""
-    pitch = w/(n+1); r=4; out=[]
-    out += [('L',x0+w,y0+r,x0+w,y0+h),('L',x0,y0+h,x0,y0+r),('L',x0+r,y0,x0+w-r,y0),('A',x0+w-r,y0+r,r,270,360),('A',x0+r,y0+r,r,180,270)]
-    edge_x=x0
-    for k in range(n):
-        xc=x0+pitch*(k+1)
-        out += [('L',edge_x,y0+h,xc-sw/2,y0+h),('L',xc-sw/2,y0+h,xc-sw/2,y0+h-sd+sw/2),('A',xc,y0+h-sd+sw/2,sw/2,180,360),('L',xc+sw/2,y0+h-sd+sw/2,xc+sw/2,y0+h)]
-        edge_x=xc+sw/2
-    out.append(('L',edge_x,y0+h,x0+w,y0+h))
+def poly(pts, ox=0, oy=0):
+    return [('L',pts[k][0]+ox,pts[k][1]+oy,pts[(k+1)%len(pts)][0]+ox,pts[(k+1)%len(pts)][1]+oy) for k in range(len(pts))]
+def rrect(x0,y0,w,h,r):
+    return [('L',x0+r,y0,x0+w-r,y0),('L',x0+w,y0+r,x0+w,y0+h-r),('L',x0+w-r,y0+h,x0+r,y0+h),('L',x0,y0+h-r,x0,y0+r),
+            ('A',x0+w-r,y0+r,r,270,360),('A',x0+w-r,y0+h-r,r,0,90),('A',x0+r,y0+h-r,r,90,180),('A',x0+r,y0+r,r,180,270)]
+def hole(x,y,d): return [('C',x,y,d/2)]
+
+# letters as cut outlines from DejaVu Sans Bold (TrueType, flattened)
+from fontTools.ttLib import TTFont
+from fontTools.pens.recordingPen import RecordingPen
+_font = TTFont('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+_gs = _font.getGlyphSet(); _upm = _font['head'].unitsPerEm
+def glyph(ch, cap_mm, ox, oy):
+    """outline of one capital letter, cap height cap_mm, lower-left of its box at (ox,oy)."""
+    name = _font.getBestCmap()[ord(ch)]
+    pen = RecordingPen(); _gs[name].draw(pen)
+    k = cap_mm / (0.729 * _upm)          # DejaVu Sans Bold cap height = 0.729 em
+    xmin = min(p[0] for op,args in pen.value for p in args if args) if False else None
+    out=[]; cur=None; start=None
+    def P(pt): return (ox + pt[0]*k, oy + pt[1]*k)
+    for op, args in pen.value:
+        if op == 'moveTo': cur = start = P(args[0])
+        elif op == 'lineTo': n = P(args[0]); out.append(('L',*cur,*n)); cur = n
+        elif op == 'qCurveTo':
+            pts = [P(a) for a in args]
+            # TrueType: implied on-curve points between consecutive off-curve points
+            offs = pts[:-1]; endp = pts[-1]
+            ctrls=[]
+            for i, c in enumerate(offs):
+                if i+1 < len(offs):
+                    mid = ((c[0]+offs[i+1][0])/2, (c[1]+offs[i+1][1])/2); ctrls.append((c, mid))
+                else: ctrls.append((c, endp))
+            for c, e in ctrls:
+                for t in [j/8 for j in range(1,9)]:
+                    n = ((1-t)**2*cur[0]+2*(1-t)*t*c[0]+t*t*e[0], (1-t)**2*cur[1]+2*(1-t)*t*c[1]+t*t*e[1])
+                    out.append(('L',*cur,*n)); cur = n
+        elif op in ('closePath','endPath'):
+            if cur != start: out.append(('L',*cur,*start))
     return out
-# bottom strip under deck B (y 10..117, x 20..386): three 90 mm hex coasters
-AF=90; R=AF/math.sqrt(3)
+def glyph_width(ch, cap_mm):
+    name = _font.getBestCmap()[ord(ch)]; return _font['hmtx'][name][0] * cap_mm/(0.729*_upm)
+
+# -- bottom strip under deck B (x 20..386, y 10..117) --
+# 1. nose plate for the car: bolts to the deck's two 4.5 mm nose holes (34.2 mm apart), FEB cut out
+px, py = 20, 70
+sheet += rrect(px, py, 60, 36, 4)
+sheet += hole(px+30-17.1, py+27, 4.5) + hole(px+30+17.1, py+27, 4.5)
+cap = 11; w = sum(glyph_width(c, cap) for c in 'FEB'); x = px+30-w/2
+for ch in 'FEB':
+    sheet += glyph(ch, cap, x, py+6); x += glyph_width(ch, cap)
+# 2. six cable saddles: tab under any M3 head, zip tie through the two slots
+for col in range(2):
+    for row in range(3):
+        x0, y0 = 20+col*35, 10+row*18
+        sheet += rrect(x0, y0, 30, 12, 2) + hole(x0+6, y0+6, 3.3)
+        for sx in (16, 23): sheet += rrect(x0+sx, y0+2.5, 2.5, 7, 1.2)
+# 3. one hex coaster
+AF=90; R=AF/math.sqrt(3); sheet += hexagon(92+R, 10+R, AF)
+# 4. three rally-car keyrings, 70 x 26, side view with wheel arches
+def car(ox, oy):
+    out = []
+    body = [(0,9),(1,6),(4,5),(8,5)]
+    out += [('L',body[i][0]+ox,body[i][1]+oy,body[i+1][0]+ox,body[i+1][1]+oy) for i in range(len(body)-1)]
+    out.append(('A',ox+14,oy+5,6,0,180))                       # front arch (from (20,5) round to (8,5))
+    out.append(('L',ox+20,oy+5,ox+50,oy+5))
+    out.append(('A',ox+56,oy+5,6,0,180))                       # rear arch
+    tail = [(62,5),(66,6),(69,9),(70,13),(68,15),(60,16),(52,16),(44,24),(40,26),(26,26),(18,24),(10,17),(3,15),(0,13),(0,9)]
+    out += [('L',tail[i][0]+ox,tail[i][1]+oy,tail[i+1][0]+ox,tail[i+1][1]+oy) for i in range(len(tail)-1)]
+    out += hole(ox+33, oy+21, 4)                               # keyring
+    out += poly([(20,17),(27,23),(39,23),(43,17)], ox, oy)     # window
+    return out
+for row in range(3): sheet += car(192, 10+row*34)
+# 5. nine cone tags (FSAE cones), 20 x 28, 3 mm hole
+cone = [(0,0),(20,0),(20,4),(16,4),(13,28),(7,28),(4,4),(0,4)]
 for col in range(3):
-    sheet += hexagon(M+R+col*(AF+10), 10+R, AF)
-# beside them: two small cable combs, 64 x 40, three 7 mm slots 22 deep
-sheet += comb(322, 12, 64, 40, 3, 7, 22)
-sheet += comb(322, 62, 64, 40, 3, 7, 22)
-# column right of the deck noses (x 372..384): sixteen M3 spacer rings, 12 mm OD, 3.3 mm hole
-for k in range(16):
-    cy = 140 + k*18
-    sheet += [('C', 378, cy, 6.0), ('C', 378, cy, 1.65)]
+    for row in range(3):
+        ox, oy = 272+col*26, 10+row*38
+        sheet += poly(cone, ox, oy) + hole(ox+10, oy+20, 3)
+# 6. M3 spacer rings, 12 mm OD, 3.3 mm hole: six here, six in the column above
+for k in range(6): sheet += hole(365, 16+k*18, 12) + hole(365, 16+k*18, 3.3)
+# -- column right of the deck noses (x 342..396, y 130..437) --
+for k in range(6): sheet += hole(378, 140+k*18, 12) + hole(378, 140+k*18, 3.3)
+# big FEB letters, 36 mm tall, as loose pieces
+for i, ch in enumerate('BEF'):
+    w = glyph_width(ch, 36); sheet += glyph(ch, 36, 369-w/2, 250+i*48)
 
 # ---------- bounds check ----------
 def bbox(items):
