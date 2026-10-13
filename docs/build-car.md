@@ -108,7 +108,8 @@ mounting holes. What differs: it has a fan on top (leave it), and it needs its S
 2. Take off the plastic antenna bar (two Phillips screws; keep them) and clip the two new antenna
    cables onto the Wi-Fi card's tiny gold connectors (press until they click).
 3. Find which deck holes the Jetson's corners meet and use the matching hardware:
-   86 × 58 mm pattern, 2.75 mm holes → **M2.5 × 10 standoffs**, M2.5 × 6 screws both ends;
+   86 × 58 mm pattern, 2.75 mm holes → **M2.5 × 10 standoffs**, M2.5 × 10 from under the deck
+   (6 mm does not reach through 0.25 in acrylic), M2.5 × 6 on top;
    42 × 79 mm pattern, 3.3 mm holes → **25 mm M3 standoffs**, M3 × 8 from underneath, M3 on top.
    Never the Jetson flat on the deck: the standoffs are its airflow.
 *Check:* Jetson level, fan clear, ports facing where cables can reach, DC jack reachable.
