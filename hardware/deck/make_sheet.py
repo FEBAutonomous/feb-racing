@@ -1,5 +1,6 @@
 """Build the 32x18 in laser sheet: deck A (S2 only, square), deck B (same + wider standoff
-slots, notched), centre cut line, and useful shapes on the right half. Outputs PDF + DXFs."""
+slots, notched), centre cut line, small useful shapes in the left half's leftover space; the
+right half is left blank. Outputs PDF + DXFs."""
 import re, math, sys
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch, mm
@@ -76,46 +77,32 @@ sheet += [('L',tx,ty-6,tx+12,ty-6),('L',tx+12,ty-6,tx+6,ty+6),('L',tx+6,ty+6,tx,
 CX = SHEET_W/2
 sheet.append(('L', CX, 0, CX, SHEET_H))
 
-# ---------- right half: hex coasters, cable combs, M3 spacer rings ----------
+# ---------- left half leftovers only; the right half stays blank for later ----------
 def hexagon(cx, cy, af):   # across-flats
     R = af/math.sqrt(3); pts=[(cx+R*math.cos(math.radians(60*k+30)), cy+R*math.sin(math.radians(60*k+30))) for k in range(6)]
     return [('L',pts[k][0],pts[k][1],pts[(k+1)%6][0],pts[(k+1)%6][1]) for k in range(6)]
-def rrect(x0,y0,w,h,r):
-    return [('L',x0+r,y0,x0+w-r,y0),('L',x0+w,y0+r,x0+w,y0+h-r),('L',x0+w-r,y0+h,x0+r,y0+h),('L',x0,y0+h-r,x0,y0+r),
-            ('A',x0+w-r,y0+r,r,270,360),('A',x0+w-r,y0+h-r,r,0,90),('A',x0+r,y0+h-r,r,90,180),('A',x0+r,y0+r,r,180,270)]
 def comb(x0,y0,w,h,n,sw,sd):
-    """cable comb: rounded rect with n slots of width sw, depth sd, open at the top edge."""
-    pitch = w/(n+1); out=[]
-    r=4
+    """cable comb: rect with rounded bottom corners and n slots of width sw, depth sd, open at the top."""
+    pitch = w/(n+1); r=4; out=[]
     out += [('L',x0+w,y0+r,x0+w,y0+h),('L',x0,y0+h,x0,y0+r),('L',x0+r,y0,x0+w-r,y0),('A',x0+w-r,y0+r,r,270,360),('A',x0+r,y0+r,r,180,270)]
-    xs=[x0+pitch*(k+1) for k in range(n)]
     edge_x=x0
-    for xc in xs:
+    for k in range(n):
+        xc=x0+pitch*(k+1)
         out += [('L',edge_x,y0+h,xc-sw/2,y0+h),('L',xc-sw/2,y0+h,xc-sw/2,y0+h-sd+sw/2),('A',xc,y0+h-sd+sw/2,sw/2,180,360),('L',xc+sw/2,y0+h-sd+sw/2,xc+sw/2,y0+h)]
         edge_x=xc+sw/2
     out.append(('L',edge_x,y0+h,x0+w,y0+h))
-    return [it for it in out if not (it[0]=='L' and abs(it[1]-it[3])<1e-9 and abs(it[2]-it[4])<1e-9)]
-RX = CX + M
-# six 90 mm hex coasters, 3 x 2
+    return out
+# bottom strip under deck B (y 10..117, x 20..386): three 90 mm hex coasters
 AF=90; R=AF/math.sqrt(3)
-for row in range(2):
-    for col in range(3):
-        cx = RX + R + col*(AF+12) + (0 if row==0 else 0)
-        cy = SHEET_H - M - R - row*(2*R+12)
-        sheet += hexagon(cx, cy, AF)
-# two cable combs 130 x 40, six 7 mm slots 22 mm deep
-cy0 = SHEET_H - M - 2*(2*R+12) - 10
-sheet += comb(RX, cy0-40, 130, 40, 6, 7, 22)
-sheet += comb(RX+150, cy0-40, 130, 40, 6, 7, 22)
-# twelve M3 spacer rings, 12 mm OD, 3.3 mm hole (6.35 mm thick spacers)
-ry = cy0 - 40 - 30
-for k in range(12):
-    sheet += [('C', RX+6+k*18, ry, 6.0), ('C', RX+6+k*18, ry, 1.65)]
-# a 150 mm ruler blank with 10 mm notches
-rx0, ry0 = RX, ry - 20 - 25
-sheet += rrect(rx0, ry0, 150, 25, 3)
-for k in range(1,15):
-    sheet.append(('L', rx0+10*k, ry0+25, rx0+10*k, ry0+25-(5 if k%5 else 9)))
+for col in range(3):
+    sheet += hexagon(M+R+col*(AF+10), 10+R, AF)
+# beside them: two small cable combs, 64 x 40, three 7 mm slots 22 deep
+sheet += comb(322, 12, 64, 40, 3, 7, 22)
+sheet += comb(322, 62, 64, 40, 3, 7, 22)
+# column right of the deck noses (x 372..384): sixteen M3 spacer rings, 12 mm OD, 3.3 mm hole
+for k in range(16):
+    cy = 140 + k*18
+    sheet += [('C', 378, cy, 6.0), ('C', 378, cy, 1.65)]
 
 # ---------- bounds check ----------
 def bbox(items):
