@@ -14,7 +14,7 @@ straight on the deck with no adapter plate.
 | `Powerboard_Adaptor_VX-V10_laser_32x18in.pdf` | the adaptor as a Jacobs laser file, same artboard and convention as the deck |
 
 ## The power board adaptor
-The V3.1 deck does not take the new (V10, Ambimat) power board directly. Its three 3.3 mm
+Only needed if your power board's holes do not meet the deck's. The V3.1 deck does not take the V10 (Ambimat) power board directly. Its three 3.3 mm
 power-board holes, at (-101, 47), (-57, 47) and (-57, -47), are a 44 x 94 mm pattern; the board's
 own holes are 66 x 42 mm. The official adaptor bridges them: a 110 x 60 mm plate, 3.13 mm thick,
 corner radius 5, with the 94 x 44 pattern (outer four holes) and the 66 x 42 pattern (inner four),

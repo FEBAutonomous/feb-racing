@@ -113,14 +113,13 @@ mounting holes. What differs: it has a fan on top (leave it), and it needs its S
    Never the Jetson flat on the deck: the standoffs are its airflow.
 *Check:* Jetson level, fan clear, ports facing where cables can reach, DC jack reachable.
 
-### 2.4 Power board  **OURS: needs the adaptor plate**
-Guide: "Mounting the Powerboard". The board's holes do **not** match the deck: the V3.1 deck has a
-44 × 94 mm three-hole pattern, the V10 (Ambimat) board a 66 × 42 mm one. The official
-`Powerboard Adaptor VX-V10` plate (in `hardware/deck/`, cut from 3 mm acrylic or printed) sits
-between them. Deck to adaptor: three **M3 × 20** from underneath through the deck, **14 mm
-standoffs**, into the adaptor's outer holes (only three meet deck holes, that is by design).
-Board to adaptor: four **M3 × 8** with nuts, or short standoffs, through the adaptor's inner holes.
-Green terminal blocks facing the lidar end. There is a gap between it and the VESC.
+### 2.4 Power board
+Guide: "Mounting the Powerboard". Three holes: M3 × 20 screws from underneath with 14 mm standoffs
+so the board sits off the deck, green terminal blocks facing the lidar end. Only three of the
+board's holes are used; one sits over nothing. There is a gap between it and the VESC.
+If your board's holes do **not** meet the deck's (the V10 Ambimat board is 66 × 42 mm, the deck's
+pattern 44 × 94 mm), the official `Powerboard Adaptor VX-V10` plate in `hardware/deck/` bridges
+them: deck to adaptor as above, board to adaptor with four M3 × 8 and nuts.
 *Check:* the board's two switches are reachable with the deck on the car.
 
 ### 2.5 RPLidar S2  **OURS**
