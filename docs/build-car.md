@@ -23,7 +23,7 @@ Nothing here is irreversible. The worst case at any step is undoing a screw.
 | 8BitDo Ultimate 2C gamepad | your dead-man switch |
 | Platform deck, our V3.1 with S2 holes, 0.25 in acrylic | `hardware/deck/` |
 | Power board adaptor plate, 3 mm acrylic or printed | `hardware/deck/` |
-| Standoffs: 3 × 14 mm, 4 × 25 mm, 6 × 45 mm (M3); 4 × M2.5 10 mm | deck and Jetson |
+| Standoffs: 4 × 25 mm, 6 × 45 mm (M3); 4 × M2.5 10 mm (14 mm ones unused) | deck and Jetson |
 | Screw assortment M2 to M5; antennas; DP dummy plug; cables and adapters | see the steps |
 
 Tools: the hex keys from the Traxxas box, a small Phillips, a T3 Torx for the Jetson, callipers
@@ -115,8 +115,9 @@ mounting holes. What differs: it has a fan on top (leave it), and it needs its S
 *Check:* Jetson level, fan clear, ports facing where cables can reach, DC jack reachable.
 
 ### 2.4 Power board
-Guide: "Mounting the Powerboard". Three holes: M3 × 20 screws from underneath with 14 mm standoffs
-so the board sits off the deck, green terminal blocks facing the lidar end. Only three of the
+Guide: "Mounting the Powerboard". Three holes: M3 × 20 screws from underneath into **25 mm M3
+standoffs** (the guide's; the four 25 mm are free because the Jetson takes M2.5), board on top with
+M3 × 8, green terminal blocks facing the lidar end. Only three of the
 board's holes are used; one sits over nothing. There is a gap between it and the VESC.
 If your board's holes do **not** meet the deck's (the V10 Ambimat board is 66 × 42 mm, the deck's
 pattern 44 × 94 mm), the official `Powerboard Adaptor VX-V10` plate in `hardware/deck/` bridges
