@@ -10,6 +10,17 @@ straight on the deck with no adapter plate.
 | `Platform_Deck_V3.1_S2.dxf` | the same plus the S2 holes: the file to cut |
 | `Platform_Deck_V3.1_S2_laser_32x18in.pdf` | the cut file ready for the Jacobs Hall Universal lasers: a 32 x 18 in artboard, 1:1, red hairlines (cut), part 20 mm from the top-left corner |
 | `Platform_Deck_V3.1_S2_check.png` | dimensioned check drawing |
+| `Powerboard_Adaptor_VX-V10.dxf` / `.stl` | the official "Powerboard Adaptor VX-V10" from the same Drive folder (Adaptor subfolder, 2024-07-30), untouched |
+| `Powerboard_Adaptor_VX-V10_laser_32x18in.pdf` | the adaptor as a Jacobs laser file, same artboard and convention as the deck |
+
+## The power board adaptor
+The V3.1 deck does not take the new (V10, Ambimat) power board directly. Its three 3.3 mm
+power-board holes, at (-101, 47), (-57, 47) and (-57, -47), are a 44 x 94 mm pattern; the board's
+own holes are 66 x 42 mm. The official adaptor bridges them: a 110 x 60 mm plate, 3.13 mm thick,
+corner radius 5, with the 94 x 44 pattern (outer four holes) and the 66 x 42 pattern (inner four),
+all 3.0 mm. Cut it from 3 mm (1/8 in) acrylic or print the STL flat. Only three of the outer
+holes meet deck holes; that is by design ("only three of the power board mounting holes are
+used" in the guide).
 
 ## The S2 holes
 Four 3.4 mm clearance holes (M3) on the S2's 41.7 x 41.7 mm pattern, centred on the deck's lidar

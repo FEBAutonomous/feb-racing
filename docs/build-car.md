@@ -22,7 +22,8 @@ Nothing here is irreversible. The worst case at any step is undoing a screw.
 | Zeee 3S 6000 mAh batteries, B6AC charger, LiPo bag | under the deck |
 | 8BitDo Ultimate 2C gamepad | your dead-man switch |
 | Platform deck, our V3.1 with S2 holes, 0.25 in acrylic | `hardware/deck/` |
-| Standoffs: 2 × 14 mm, 4 × 25 mm, 6 × 45 mm (M3); 4 × M2.5 10 mm | deck and Jetson |
+| Power board adaptor plate, 3 mm acrylic or printed | `hardware/deck/` |
+| Standoffs: 3 × 14 mm, 4 × 25 mm, 6 × 45 mm (M3); 4 × M2.5 10 mm | deck and Jetson |
 | Screw assortment M2 to M5; antennas; DP dummy plug; cables and adapters | see the steps |
 
 Tools: the hex keys from the Traxxas box, a small Phillips, a T3 Torx for the Jetson, callipers
@@ -67,10 +68,13 @@ across.
 *Check:* pushing the car along the bench, the motor turns freely and quietly.
 
 ### 1.4 Standoffs on the chassis
-Guide: "Attaching the Standoffs". Remove the nerf bars (four screws each, from underneath). Fit
-**three 45 mm standoffs** into the chassis with M3 screws from below: two on the motor side, one on
-the battery side. A drop of thread-locker on each.
-*Check:* three posts standing up, about the deck's footprint apart.
+Guide: "Attaching the Standoffs". Remove the nerf bars (four screws each, from underneath; on the
+BL-2s they are the clipless body mounts in the same holes). Fit **three 45 mm standoffs** into the
+chassis with the removed M3 × 10 screws from below, in the **side-rail holes the nerf bars used**:
+two on the motor side, one on the battery side, front. A drop of thread-locker on each.
+*Check:* three posts standing up; the two on the motor side 123.85 mm (4 7/8 in) apart, matching
+the deck's edge holes. If the deck's holes land 3 mm off, a standoff is in a neighbouring rail
+hole: move it, do not bend the deck onto it.
 
 ### 1.5 Battery, dry fit only
 Place a battery in the compartment opposite the motor, see that the deck will clear it. Do not plug
@@ -98,17 +102,25 @@ VESC, with its two cables. The antennas themselves screw on last.
 ### 2.3 Jetson Orin Nano  **OURS, but the same as the guide**
 The guide's NX photos apply: your Orin Nano dev kit has the same board size and the same four
 mounting holes. What differs: it has a fan on top (leave it), and it needs its SSD.
-1. Before mounting: fit the NVMe SSD into the M.2 slot underneath (one screw).
-2. Clip the two antenna cables onto the Wi-Fi card's tiny connectors (press until they click).
-3. Four **25 mm standoffs** on the deck's Jetson holes (M3 screw from underneath into each).
-4. Jetson onto the standoffs, four **M2.5 × 10** screws through its corner holes. (10 mm, not the
-   sheet's 6 mm, because our deck is 0.25 in.)
+1. Before mounting: fit the NVMe SSD into the **long** M.2 slot underneath (2280, Key M; the short
+   slot holds the Wi-Fi card). Unscrew the M2 post screw, slide the SSD in at about 20 degrees,
+   press it flat, screw back finger-tight.
+2. Take off the plastic antenna bar (two Phillips screws; keep them) and clip the two new antenna
+   cables onto the Wi-Fi card's tiny gold connectors (press until they click).
+3. Find which deck holes the Jetson's corners meet and use the matching hardware:
+   86 × 58 mm pattern, 2.75 mm holes → **M2.5 × 10 standoffs**, M2.5 × 6 screws both ends;
+   42 × 79 mm pattern, 3.3 mm holes → **25 mm M3 standoffs**, M3 × 8 from underneath, M3 on top.
+   Never the Jetson flat on the deck: the standoffs are its airflow.
 *Check:* Jetson level, fan clear, ports facing where cables can reach, DC jack reachable.
 
-### 2.4 Power board
-Guide: "Mounting the Powerboard". Three holes: M3 × 20 screws from underneath with 14 mm standoffs
-so the board sits off the deck, green terminal blocks facing the lidar end. There is a gap between
-it and the VESC.
+### 2.4 Power board  **OURS: needs the adaptor plate**
+Guide: "Mounting the Powerboard". The board's holes do **not** match the deck: the V3.1 deck has a
+44 × 94 mm three-hole pattern, the V10 (Ambimat) board a 66 × 42 mm one. The official
+`Powerboard Adaptor VX-V10` plate (in `hardware/deck/`, cut from 3 mm acrylic or printed) sits
+between them. Deck to adaptor: three **M3 × 20** from underneath through the deck, **14 mm
+standoffs**, into the adaptor's outer holes (only three meet deck holes, that is by design).
+Board to adaptor: four **M3 × 8** with nuts, or short standoffs, through the adaptor's inner holes.
+Green terminal blocks facing the lidar end. There is a gap between it and the VESC.
 *Check:* the board's two switches are reachable with the deck on the car.
 
 ### 2.5 RPLidar S2  **OURS**
