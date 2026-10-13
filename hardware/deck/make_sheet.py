@@ -123,6 +123,39 @@ def glyph(ch, cap_mm, ox, oy):
 def glyph_width(ch, cap_mm):
     name = _font.getBestCmap()[ord(ch)]; return _font['hmtx'][name][0] * cap_mm/(0.729*_upm)
 
+def glyph_paths(ch, cap_mm, ox, oy):
+    """closed contours (lists of points) of one letter, for filling (raster engrave)."""
+    name = _font.getBestCmap()[ord(ch)]
+    pen = RecordingPen(); _gs[name].draw(pen)
+    k = cap_mm / (0.729 * _upm)
+    P = lambda pt: (ox + pt[0]*k, oy + pt[1]*k)
+    paths=[]; cur=None; pts=[]
+    for op, args in pen.value:
+        if op == 'moveTo': pts=[P(args[0])]; cur=pts[0]
+        elif op == 'lineTo': cur=P(args[0]); pts.append(cur)
+        elif op == 'qCurveTo':
+            qs=[P(a) for a in args]; offs=qs[:-1]; endp=qs[-1]
+            for i,c in enumerate(offs):
+                e = ((c[0]+offs[i+1][0])/2,(c[1]+offs[i+1][1])/2) if i+1<len(offs) else endp
+                for t in [j/8 for j in range(1,9)]:
+                    n=((1-t)**2*cur[0]+2*(1-t)*t*c[0]+t*t*e[0],(1-t)**2*cur[1]+2*(1-t)*t*c[1]+t*t*e[1]); pts.append(n)
+                cur=e
+        elif op in ('closePath','endPath'):
+            if len(pts)>2: paths.append(pts)
+            pts=[]
+    return paths
+
+# FEB logo: two parallelograms from assets/feb_logo.svg (769 x 579 box), each shrunk 6 % about
+# its own centre so a web of acrylic stays between them.
+_BLUE=[(360,0),(0,360),(314,360),(674,0)]; _YEL=[(455,219),(95,579),(409,579),(769,219)]
+def logo(cx, cy, width, shrink=0.94):
+    k = width/769.0; out=[]
+    for quad in (_BLUE,_YEL):
+        qx=sum(q[0] for q in quad)/4; qy=sum(q[1] for q in quad)/4
+        pts=[(cx+(qx+(x-qx)*shrink-769/2)*k, cy-(qy+(y-qy)*shrink-579/2)*k) for x,y in quad]
+        out.append(pts)
+    return out
+
 # -- bottom strip under deck B (x 20..386, y 10..117) --
 # 1. nose plate for the car: bolts to the deck's two 4.5 mm nose holes (34.2 mm apart), FEB cut out
 px, py = 20, 70
@@ -137,40 +170,28 @@ for col in range(2):
         x0, y0 = 20+col*35, 10+row*18
         sheet += rrect(x0, y0, 30, 12, 2) + hole(x0+6, y0+6, 3.3)
         for sx in (16, 23): sheet += rrect(x0+sx, y0+2.5, 2.5, 7, 1.2)
-# 3. one hex coaster
-AF=90; R=AF/math.sqrt(3); sheet += hexagon(92+R, 10+R, AF)
-# 4. three rally-car keyrings, 70 x 26, side view with wheel arches
-def car(ox, oy):
-    out = []
-    body = [(0,9),(1,6),(4,5),(8,5)]
-    out += [('L',body[i][0]+ox,body[i][1]+oy,body[i+1][0]+ox,body[i+1][1]+oy) for i in range(len(body)-1)]
-    out.append(('A',ox+14,oy+5,6,0,180))                       # front arch (from (20,5) round to (8,5))
-    out.append(('L',ox+20,oy+5,ox+50,oy+5))
-    out.append(('A',ox+56,oy+5,6,0,180))                       # rear arch
-    tail = [(62,5),(66,6),(69,9),(70,13),(68,15),(60,16),(52,16),(44,24),(40,26),(26,26),(18,24),(10,17),(3,15),(0,13),(0,9)]
-    out += [('L',tail[i][0]+ox,tail[i][1]+oy,tail[i+1][0]+ox,tail[i+1][1]+oy) for i in range(len(tail)-1)]
-    out += hole(ox+33, oy+21, 4)                               # keyring
-    out += poly([(20,17),(27,23),(39,23),(43,17)], ox, oy)     # window
+# 3. ten team plaques, 50 x 40: outline and hanging hole cut; logo and FEBAUTO raster-engraved
+def plaque(x0, y0):
+    out = rrect(x0, y0, 50, 40, 3) + hole(x0+5, y0+35, 3.3)
+    out.append(('F', logo(x0+25, y0+26, 26)))
+    cap=4.2; wtxt=sum(glyph_width(c,cap) for c in 'FEBAUTO'); x=x0+25-wtxt/2
+    for ch in 'FEBAUTO':
+        out.append(('F', glyph_paths(ch, cap, x, y0+6))); x += glyph_width(ch, cap)
     return out
-for row in range(3): sheet += car(192, 10+row*34)
-# 5. nine cone tags (FSAE cones), 20 x 28, 3 mm hole
-cone = [(0,0),(20,0),(20,4),(16,4),(13,28),(7,28),(4,4),(0,4)]
-for col in range(3):
-    for row in range(3):
-        ox, oy = 272+col*26, 10+row*38
-        sheet += poly(cone, ox, oy) + hole(ox+10, oy+20, 3)
-# 6. M3 spacer rings, 12 mm OD, 3.3 mm hole: six here, six in the column above
-for k in range(6): sheet += hole(365, 16+k*18, 12) + hole(365, 16+k*18, 3.3)
-# -- column right of the deck noses (x 342..396, y 130..437) --
-for k in range(6): sheet += hole(378, 140+k*18, 12) + hole(378, 140+k*18, 3.3)
-# big FEB letters, 36 mm tall, as loose pieces
-for i, ch in enumerate('BEF'):
-    w = glyph_width(ch, 36); sheet += glyph(ch, 36, 369-w/2, 250+i*48)
+for col in range(5):
+    for row in range(2):
+        sheet += plaque(92+col*56, 12+row*50)
+# -- column right of the deck noses (x 342..396, y 130..437): sixteen M3 spacer rings --
+for k in range(16): sheet += hole(378, 140+k*18, 12) + hole(378, 140+k*18, 3.3)
 
 # ---------- bounds check ----------
 def bbox(items):
     xs=[];ys=[]
     for it in items:
+        if it[0]=='F':
+            for poly_ in it[1]:
+                xs+=[q[0] for q in poly_]; ys+=[q[1] for q in poly_]
+            continue
         if it[0]=='L': xs+=[it[1],it[3]]; ys+=[it[2],it[4]]
         elif it[0]=='C': xs+=[it[1]-it[3],it[1]+it[3]]; ys+=[it[2]-it[3],it[2]+it[3]]
         else:
@@ -185,6 +206,14 @@ bb=bbox(sheet); assert bb[0]>=0 and bb[1]<=SHEET_W and bb[2]>=0 and bb[3]<=SHEET
 c = canvas.Canvas(OUT+'.pdf', pagesize=(SHEET_W*mm, SHEET_H*mm))
 c.setStrokeColorRGB(1,0,0); c.setLineWidth(0.001)
 for it in sheet:
+    if it[0]=='F':
+        c.saveState(); c.setFillColorRGB(0,0,0)
+        pth=c.beginPath()
+        for poly_ in it[1]:
+            pth.moveTo(poly_[0][0]*mm, poly_[0][1]*mm)
+            for q in poly_[1:]: pth.lineTo(q[0]*mm, q[1]*mm)
+            pth.close()
+        c.drawPath(pth, stroke=0, fill=1, fillMode=1); c.restoreState(); continue
     if it[0]=='L': c.line(it[1]*mm,it[2]*mm,it[3]*mm,it[4]*mm)
     elif it[0]=='C': c.circle(it[1]*mm,it[2]*mm,it[3]*mm)
     else:
@@ -197,6 +226,12 @@ c.save()
 def dxf(items, path):
     o=['0','SECTION','2','HEADER','9','$INSUNITS','70','4','0','ENDSEC','0','SECTION','2','ENTITIES']
     for it in items:
+        if it[0]=='F':
+            for poly_ in it[1]:
+                for i in range(len(poly_)):
+                    a,b=poly_[i],poly_[(i+1)%len(poly_)]
+                    o+=['0','LINE','8','ENGRAVE','10',f'{a[0]:.4f}','20',f'{a[1]:.4f}','30','0','11',f'{b[0]:.4f}','21',f'{b[1]:.4f}','31','0']
+            continue
         if it[0]=='L': o+=['0','LINE','8','CUT','10',f'{it[1]:.4f}','20',f'{it[2]:.4f}','30','0','11',f'{it[3]:.4f}','21',f'{it[4]:.4f}','31','0']
         elif it[0]=='C': o+=['0','CIRCLE','8','CUT','10',f'{it[1]:.4f}','20',f'{it[2]:.4f}','30','0','40',f'{it[3]:.4f}']
         else: o+=['0','ARC','8','CUT','10',f'{it[1]:.4f}','20',f'{it[2]:.4f}','30','0','40',f'{it[3]:.4f}','50',f'{it[4]:.4f}','51',f'{it[5]:.4f}']

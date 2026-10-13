@@ -12,7 +12,7 @@ straight on the deck with no adapter plate.
 | `Platform_Deck_V3.1_S2_check.png` | dimensioned check drawing |
 | `Platform_Deck_V3.1_S2sq_A.dxf` | **current deck (2026-10-13)**: S2 holes square to the deck, Hokuyo holes removed |
 | `Platform_Deck_V3.1_S2sq_B_slots.dxf` | same, but the eight rail-edge holes are 3 mm slots along the rail on a 127 mm outer span (the spacing measured on our BL-2s), with a half-round notch on the rear edge to tell it apart |
-| `Platform_Deck_V3.1_S2sq_sheet_32x18in.pdf` | one Jacobs sheet: deck A top-left, deck B below it with a loose triangle beside it, a full-height cut down the middle so the blank right half comes off whole for later, and in the left half's spare space: a FEB nose plate that bolts to the deck's two 4.5 mm nose holes, six cable saddles (tab under any M3 head, zip tie through the slots), one hex coaster, three rally-car keyrings, nine cone tags, twelve M3 spacer rings (6.35 mm thick, 3.3 mm hole) and loose F, E, B letters |
+| `Platform_Deck_V3.1_S2sq_sheet_32x18in.pdf` | one Jacobs sheet: deck A top-left, deck B below it with a loose triangle beside it, a full-height cut down the middle so the blank right half comes off whole for later, and in the left half's spare space: a FEB nose plate that bolts to the deck's two 4.5 mm nose holes, six cable saddles (tab under any M3 head, zip tie through the slots), ten 50 x 40 mm team plaques with the FEB logo and FEBAUTO as black fills (raster engrave) and a hanging hole, and sixteen M3 spacer rings (6.35 mm thick, 3.3 mm hole). Red hairlines cut, black fills engrave |
 | `make_sheet.py` | generates the three files above from `Platform_Deck_V3.1_S2.dxf` |
 
 ## Second cut (2026-10-13)
