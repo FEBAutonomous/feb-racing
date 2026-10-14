@@ -157,19 +157,14 @@ def logo(cx, cy, width, shrink=0.94):
     return out
 
 # -- bottom strip under deck B (x 20..386, y 10..117) --
-# 1. nose plate for the car: bolts to the deck's two 4.5 mm nose holes (34.2 mm apart), FEB cut out
-px, py = 20, 70
-sheet += rrect(px, py, 60, 36, 4)
-sheet += hole(px+30-17.1, py+27, 4.5) + hole(px+30+17.1, py+27, 4.5)
-cap = 11; w = sum(glyph_width(c, cap) for c in 'FEB'); x = px+30-w/2
-for ch in 'FEB':
-    sheet += glyph(ch, cap, x, py+6); x += glyph_width(ch, cap)
-# 2. six cable saddles: tab under any M3 head, zip tie through the two slots
-for col in range(2):
+# 1. nine FSAE cone keychains, 20 x 28: outline and 3 mm ring hole cut, the cone's stripe engraved
+cone = [(0,0),(20,0),(20,4),(16,4),(13,28),(7,28),(4,4),(0,4)]
+stripe = [(5.0,12),(15.0,12),(14.375,17),(5.625,17)]      # band between the cone's sloping edges
+for col in range(3):
     for row in range(3):
-        x0, y0 = 20+col*35, 10+row*18
-        sheet += rrect(x0, y0, 30, 12, 2) + hole(x0+6, y0+6, 3.3)
-        for sx in (16, 23): sheet += rrect(x0+sx, y0+2.5, 2.5, 7, 1.2)
+        ox, oy = 20+col*23, 10+row*34
+        sheet += poly(cone, ox, oy) + hole(ox+10, oy+23, 3)
+        sheet.append(('F', [[(x+ox, y+oy) for x, y in stripe]]))
 # 3. ten team plaques, 50 x 40: outline and hanging hole cut; logo and FEBAUTO raster-engraved
 def plaque(x0, y0):
     out = rrect(x0, y0, 50, 40, 3) + hole(x0+5, y0+35, 3.3)
