@@ -7,7 +7,8 @@ from reportlab.lib.units import inch, mm
 
 SRC = sys.argv[1]; OUT = sys.argv[2]
 IN = 25.4
-SHEET_W, SHEET_H = 32*IN, 18*IN
+SHEET_W, SHEET_H = 32*IN, 16*IN
+CX = 480.0   # centre cut; the blank right half is 332.8 mm (13.1 in) wide
 
 # ---------- read the S2 deck DXF ----------
 s = open(SRC, errors='ignore').read()
@@ -70,11 +71,10 @@ A_ox, A_oy = M+155, SHEET_H-M-72.5
 B_ox, B_oy = M+155, SHEET_H-M-145-M-72.5
 sheet += place(deckA, A_ox, A_oy)
 sheet += place(deckB, B_ox, B_oy)
-# label triangle beside deck B (a loose 12 mm triangle, 'B' marker)
-tx, ty = B_ox+155+12, B_oy
+# label triangle beside deck B's nose (a loose 12 mm triangle, 'B' marker)
+tx, ty = B_ox+155+4, B_oy-25
 sheet += [('L',tx,ty-6,tx+12,ty-6),('L',tx+12,ty-6,tx+6,ty+6),('L',tx+6,ty+6,tx,ty-6)]
 # centre cut line, full height
-CX = SHEET_W/2
 sheet.append(('L', CX, 0, CX, SHEET_H))
 
 # ---------- left half leftovers only; the right half stays blank for later ----------
@@ -157,15 +157,29 @@ def logo(cx, cy, width, shrink=0.94):
     return out
 
 # -- bottom strip under deck B (x 20..386, y 10..117) --
+# -- bottom strip under deck B (x 20..330, y 10..66) --
 # 1. nine FSAE cone keychains, 20 x 28: outline and 3 mm ring hole cut, the cone's stripe engraved
 cone = [(0,0),(20,0),(20,4),(16,4),(13,28),(7,28),(4,4),(0,4)]
 stripe = [(5.0,12),(15.0,12),(14.375,17),(5.625,17)]      # band between the cone's sloping edges
+for k in range(9):
+    ox, oy = 20+k*23, 12
+    sheet += poly(cone, ox, oy) + hole(ox+10, oy+23, 3)
+    sheet.append(('F', [[(x+ox, y+oy) for x, y in stripe]]))
+# 2. fifteen M3 spacer rings, 12 mm OD, 3.3 mm hole
+for row in range(3):
+    for col in range(5):
+        sheet += hole(240+col*18, 18+row*18, 12) + hole(240+col*18, 18+row*18, 3.3)
+# -- area right of the decks (x 345..470, y 10..396) --
+# 3. nine cone keychains with the FEB logo on a taller base, 24 x 30
+tall = [(0,0),(24,0),(24,7),(18,7),(14.5,30),(9.5,30),(6,7),(0,7)]
+tstripe = [(7.4,16),(16.6,16),(15.9,20.5),(8.1,20.5)]
 for col in range(3):
     for row in range(3):
-        ox, oy = 20+col*23, 10+row*34
-        sheet += poly(cone, ox, oy) + hole(ox+10, oy+23, 3)
-        sheet.append(('F', [[(x+ox, y+oy) for x, y in stripe]]))
-# 3. ten team plaques, 50 x 40: outline and hanging hole cut; logo and FEBAUTO raster-engraved
+        ox, oy = 345+col*28, 12+row*36
+        sheet += poly(tall, ox, oy) + hole(ox+12, oy+25, 3)
+        sheet.append(('F', [[(x+ox, y+oy) for x, y in tstripe]]))
+        sheet.append(('F', logo(ox+12, oy+3.6, 8)))
+# 4. ten team plaques, 50 x 40: outline and hanging hole cut; logo and FEBAUTO raster-engraved
 def plaque(x0, y0):
     out = rrect(x0, y0, 50, 40, 3) + hole(x0+5, y0+35, 3.3)
     out.append(('F', logo(x0+25, y0+26, 26)))
@@ -173,11 +187,9 @@ def plaque(x0, y0):
     for ch in 'FEBAUTO':
         out.append(('F', glyph_paths(ch, cap, x, y0+6))); x += glyph_width(ch, cap)
     return out
-for col in range(5):
-    for row in range(2):
-        sheet += plaque(92+col*56, 12+row*50)
-# -- column right of the deck noses (x 342..396, y 130..437): sixteen M3 spacer rings --
-for k in range(16): sheet += hole(378, 140+k*18, 12) + hole(378, 140+k*18, 3.3)
+for col in range(2):
+    for row in range(5):
+        sheet += plaque(345+col*56, 130+row*46)
 
 # ---------- bounds check ----------
 def bbox(items):
