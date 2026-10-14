@@ -210,23 +210,26 @@ def bbox(items):
 bb=bbox(sheet); assert bb[0]>=0 and bb[1]<=SHEET_W and bb[2]>=0 and bb[3]<=SHEET_H, bb
 
 # ---------- PDF ----------
-c = canvas.Canvas(OUT+'.pdf', pagesize=(SHEET_W*mm, SHEET_H*mm))
+# the PDF page is the full 32 x 18 in bed so the print driver does not re-centre a smaller page;
+# the 32 x 16 sheet sits in the bed's top-left corner, so content is shifted up by the difference
+PAGE_H = 18*IN; DY = PAGE_H - SHEET_H
+c = canvas.Canvas(OUT+'.pdf', pagesize=(SHEET_W*mm, PAGE_H*mm))
 c.setStrokeColorRGB(1,0,0); c.setLineWidth(0.001)
 for it in sheet:
     if it[0]=='F':
         c.saveState(); c.setFillColorRGB(0,0,0)
         pth=c.beginPath()
         for poly_ in it[1]:
-            pth.moveTo(poly_[0][0]*mm, poly_[0][1]*mm)
-            for q in poly_[1:]: pth.lineTo(q[0]*mm, q[1]*mm)
+            pth.moveTo(poly_[0][0]*mm, (poly_[0][1]+DY)*mm)
+            for q in poly_[1:]: pth.lineTo(q[0]*mm, (q[1]+DY)*mm)
             pth.close()
         c.drawPath(pth, stroke=0, fill=1, fillMode=1); c.restoreState(); continue
-    if it[0]=='L': c.line(it[1]*mm,it[2]*mm,it[3]*mm,it[4]*mm)
-    elif it[0]=='C': c.circle(it[1]*mm,it[2]*mm,it[3]*mm)
+    if it[0]=='L': c.line(it[1]*mm,(it[2]+DY)*mm,it[3]*mm,(it[4]+DY)*mm)
+    elif it[0]=='C': c.circle(it[1]*mm,(it[2]+DY)*mm,it[3]*mm)
     else:
         a0,a1=it[4],it[5]
         if a1<a0: a1+=360
-        c.arc((it[1]-it[3])*mm,(it[2]-it[3])*mm,(it[1]+it[3])*mm,(it[2]+it[3])*mm,a0,a1-a0)
+        c.arc((it[1]-it[3])*mm,(it[2]-it[3]+DY)*mm,(it[1]+it[3])*mm,(it[2]+it[3]+DY)*mm,a0,a1-a0)
 c.save()
 
 # ---------- DXF (R12, mm) ----------
