@@ -34,15 +34,21 @@ Desktop's WSL integration on, and keep `~/FEB` inside WSL. Mac: keep `~/FEB` und
 
 ## Already had the old devkit
 
+The history was rewritten for release 2, so `git pull` in an old clone stops with
+*refusing to merge unrelated histories*. Clone again and carry your driver over:
+
 ```
-cd feb-racing && git pull && ./feb setup
+mv ~/feb-racing ~/feb-racing-old        # wherever the old clone is
+mkdir -p ~/FEB && cd ~/FEB
+git clone git@github.com:FEBAutonomous/feb-racing.git && cd feb-racing
+cp -r ~/feb-racing-old/stack/* stack/
+./feb setup --name "Your Name"
 ```
 
-One condition: the clone must sit in a folder of its own, because the box mounts the folder
-that holds it. If `feb-racing` is straight in your home folder, move it first:
-`mkdir ~/FEB && mv ~/feb-racing ~/FEB/`. `setup` refuses to go on otherwise.
+The clone must sit in a folder of its own, because the box mounts the folder that holds it;
+`setup` refuses to go on otherwise.
 
-Your `stack/` folder stays where it is and still works. What changed: the container is no longer
+Your copied `stack/` still works. What changed: the container is no longer
 thrown away after every run, so builds are incremental and `pip install` sticks; the launcher is `feb` and `feb-sim run`
 is now `feb up`; your whole FEB folder is visible in the box, not
 only `stack/`; and the drivers now talk the car's topics, `/scan`, `/odom`, `/drive`, instead of

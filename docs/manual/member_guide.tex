@@ -64,13 +64,18 @@ keep \file{\textasciitilde/FEB} inside WSL. Mac: keep it under \file{/Users}.
 
 \section{Already had release 1}
 
+The repository's history was rewritten for release 2, so \cmd{git pull} in an old clone stops
+with \emph{refusing to merge unrelated histories}. Clone again, then carry your driver over:
+
 \begin{lstlisting}
-cd feb-racing && git pull && ./feb setup
+mv ~/feb-racing ~/feb-racing-old        # wherever the old clone is
+mkdir -p ~/FEB && cd ~/FEB
+git clone git@github.com:FEBAutonomous/feb-racing.git && cd feb-racing
+cp -r ~/feb-racing-old/stack/* stack/
+./feb setup --name "Your Name"
 \end{lstlisting}
 
-The clone must sit in a folder of its own: the box mounts the folder that holds it. If
-\file{feb-racing} is straight in your home folder, \cmd{mkdir \textasciitilde/FEB \&\& mv
-\textasciitilde/feb-racing \textasciitilde/FEB/} first; \texttt{setup} refuses otherwise. Your
+The clone must sit in a folder of its own: the box mounts the folder that holds it. Your
 \file{stack/} keeps working. A node written against the old topics still drives in the simulator;
 to run on the car it needs the five topics of section~\ref{sec:contract}, about thirty lines for
 the gap follower.

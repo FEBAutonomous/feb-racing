@@ -16,8 +16,8 @@ you install, and runs the same on the car. The simulator and Foxglove are apps b
    Your name is how your results are listed. Get it added to `submissions.yaml` with your GitHub login.
 3. `./feb up`. The simulator opens, arrow keys drive, close the window to stop.
 
-Had the old devkit? `cd feb-racing && git pull && ./feb setup`. The clone must sit in a folder of
-its own; if it's straight in your home folder, `mkdir ~/FEB && mv ~/feb-racing ~/FEB/` first.
+Had the old devkit? `git pull` won't work, the history was rewritten. Move the old clone aside,
+do steps 2 and 3 above, then copy your old `stack/` contents into the new `stack/`.
 
 ## Every day
 
