@@ -4,3 +4,7 @@ __pycache__/
 runs/
 site/_build/
 stack/
+# colcon output wherever a workspace is built
+**/build/
+**/install/
+**/log/

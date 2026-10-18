@@ -6,33 +6,43 @@ copy it, make it faster, and race it. Every stage below ends with a number on th
 ## Setup (once)
 
 ```bash
-git clone https://github.com/Pranman1/feb-racing && cd feb-racing
-./feb-sim setup --team "Your Team"      # Docker check, devkit image, simulator app for your OS
+git clone https://github.com/FEBAutonomous/feb-racing && cd feb-racing
+./feb setup --name "Your Name"      # Docker check, devkit image, simulator app for your OS
 cp -r starter_kit/feb_driver stack/     # your copy; stack/ is mounted into the container
-./feb-sim run                           # drive with the arrow keys first
-./feb-sim run --stack "ros2 launch feb_driver drive.launch.py"   # the starter driver
+./feb up                           # drive with the arrow keys first
+./feb up --stack "ros2 launch feb_driver drive.launch.py"   # the starter driver
 ```
 
 Requirements: Docker Desktop (Mac/Windows) or docker.io (Linux), Python 3, the GitHub CLI for
-`feb-sim submit`, and [Foxglove](https://foxglove.dev/download) (sign in once) to see your car's data. Your code stays on your laptop and is built inside the container on start.
+`feb submit`, and [Foxglove](https://foxglove.dev/download) (sign in once) to see your car's data. Your code stays on your laptop and is built in the box by `feb up` (`docs/devkit.md`).
+
+The MPC racer, `feb_cone_racer`, is on the same contract but is sim-only for now: it drives clean
+at the simulator's full rate and not yet at the 10 Hz scoring rate, so it is not released.
+
+The kit is a set of packages, copied into your workspace as needed: `feb_driver` (the gap
+follower, the template), `feb_cone_driver` (cones), `feb_cone_ordering` (the team's cone ordering
+as a ROS service) and `feb_mission` (the supervisor's state as go/stop hooks). Each driver has a
+`driver.yaml`; `./feb up --driver NAME` starts it.
 
 ## Stage 0: read the car
 
-Topics (namespace `/autodrive/roboracer_1/`): `lidar` (1080 beams, 270°, 0.06 to 10 m, 40 Hz),
-`imu`, `left_encoder` / `right_encoder` (wheel angle in rad, 0.059 m radius), `steering` and
-`throttle` feedback. Commands: `steering_command` in [-1, 1] = ±0.5236 rad, `throttle_command`
-in [-1, 1] where 0 is a hard brake. Steering lags about 0.25 s and slews at 3.2 rad/s.
-`./feb-sim shell` gives you a ROS 2 shell: `ros2 topic hz`, `ros2 topic echo`. To *see* the data
-(lidar in 3D, the camera, plots of throttle and steering) install [Foxglove](https://foxglove.dev/download):
-`feb-sim run` opens it on your car (`ws://localhost:8765`). It also opens the bags under `runs/`.
+Topics, the real car's: `/scan` (LaserScan, 1080 beams, 270°, 0.06 to 10 m, 40 Hz), `/odom`
+(pose and speed, dead-reckoned from the wheels and the gyro), `/imu`, `/camera/color/image_raw`.
+Command: `/drive` (AckermannDriveStamped), `drive.speed` in m/s and `drive.steering_angle` in rad
+up to ±0.5236. Steering lags about 0.25 s and slews at 3.2 rad/s. A command older than 0.5 s stops
+the car. The simulator's own `/autodrive/roboracer_1/*` topics are there for debugging, not driving.
+`./feb shell` gives you a ROS 2 shell: `ros2 topic hz`, `ros2 topic echo`. To *see* the data
+(lidar in 3D, the camera, plots) install [Foxglove](https://foxglove.dev/download):
+`feb up` opens it on your car (`ws://localhost:8765`). It also opens the bags under `runs/`.
 
 ## Stage 1: reactive driving (follow the gap)
 
 Read `feb_driver/reactive_driver.py` (about 170 lines). Tune `config/driver.yaml`: bubble, gap
-FOV, the deep-beam weight, speed limits, braking margin, the filter time constants. Note the
-throttle law: feed-forward plus a trim bounded to half of it. Throttle 0 is a hard brake here,
-so a textbook PI speed loop surges and stops; keep the command away from zero. Score yourself: `./feb-sim practice --stack "ros2 launch feb_driver drive.launch.py"`,
-post with `./feb-sim submit`. Target: 10 clean laps on `loop` under 100 s.
+FOV, the deep-beam weight, speed limits, braking margin, the filter time constants. The driver
+asks for a speed; turning it into throttle is the sim adapter's job (feed-forward plus a bounded
+trim, in `devkit/feb_tools/feb_tools/sim_adapter.py`), the VESC's on the car. Score yourself:
+`./feb practice --driver feb_driver` runs every wall track in the practice set, `./feb submit` posts
+the finished ones. Target: 10 clean laps on `loop` under 100 s.
 
 ## Stage 2: system identification
 
@@ -63,7 +73,7 @@ between them they are the FSAE car's pipeline at small scale.
 
 ```bash
 cp -r starter_kit/feb_cone_driver stack/
-./feb-sim run --track loop_cones --look visual --stack "ros2 launch feb_cone_driver drive.launch.py"
+./feb up --track loop_cones --look visual --stack "ros2 launch feb_cone_driver drive.launch.py"
 ```
 
 Per lidar scan: small clusters of returns are cone candidates; the camera's blue and yellow
@@ -89,10 +99,8 @@ manuals; how and when they reach members is still to be decided.
 ### `feb_cone_racer`: map, raceline, MPC
 
 ```bash
-cp -r starter_kit/feb_cone_racer starter_kit/feb_cone_ordering stack/
-./feb-sim run --track loop_cones --look visual --stack "ros2 launch feb_cone_racer race.launch.py"
-# in another terminal, once, while the devkit is running:
-starter_kit/feb_cone_racer/install_deps.sh      # scipy + CasADi into stack/.pydeps
+cp -r starter_kit/feb_cone_racer starter_kit/feb_cone_ordering starter_kit/feb_mission stack/
+./feb up --track loop_cones --look visual --driver feb_cone_racer
 ```
 
 Lap 1 is driven the way the car does it: the map grows with every keyframe, the team's cone
@@ -130,7 +138,7 @@ and `tools/dynfit.py` checks the model against the recording. `python3 -m feb_co
 `/feb/map`, `/feb/raceline`, `/feb/pose`, `/feb/mpc_prediction`, and `/feb/status`, one line twice
 a second with the phase (mapping lap, waiting for the ordering, racing), what is steering (local
 path, reactive follower, MPC, pure pursuit) and any active fallback (map match lost, no cones in
-view, stopped); `./feb-sim logs -f` shows the same story as the racer's log, and `debug: true` in
+view, stopped); `./feb logs -f` shows the same story as the racer's log, and `debug: true` in
 `config/racer.yaml` logs every lap-one steering decision and every scan that matched nothing.
 Parameters are in `config/racer.yaml` and, for the racing half, `feb_cone_racer/params.py`. Cone colours: the camera is
 192 by 108 pixels and a cone beyond 4 m is a few pixels, so a blob only colours a cone for the map
@@ -190,15 +198,15 @@ C++ on start; the racer's launch starts the node when the package is present.
 
 ## Stage 5: realism
 
-`./feb-sim run --noise 1` adds lidar range noise and dropouts; `--noise "range_sigma:=0.05 latency:=0.05"`
+`./feb up --noise 1` adds lidar range noise and dropouts; `--noise "range_sigma:=0.05 latency:=0.05"`
 sets them; `--lidar-hz 10` runs the lidar at the rate the real bridge often delivers.
-`./feb-sim run --stack "..." --opponent normal` races you against the house racer in car two
+`./feb up --stack "..." --opponent normal` races you against the house racer in car two
 (`slow`, `normal`, `fast`, or `map`), through the same 10 Hz proxy the competitions use.
 
 ## Submitting for competitions
 
 ```bash
-docker build -t <you>/feb-racer:v1 stack/       # FROM ghcr.io/pranman1/feb-devkit, see starter_kit/Dockerfile
+docker build -t <you>/feb-racer:v1 stack/       # FROM ghcr.io/febautonomous/feb-devkit, see starter_kit/Dockerfile
 docker push <you>/feb-racer:v1
 ```
 Add your team and image to `submissions.yaml` in a pull request. The image must start the

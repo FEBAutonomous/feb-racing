@@ -1,0 +1,76 @@
+#!/bin/bash
+# The house layer under your stack, started from a laptop by `feb up` or from a box terminal by
+# hand. Builds the workspace, sources it and runs feb_tools/up.launch.py.
+#
+#   feb-up [--ws DIR] [--stack "ros2 launch ..."] [--noise ARGS] [--car] [--no-foxglove]
+#          [--deadman] [--max-speed M] [--track DIR] [--quiet] [--adapter "k=v,k=v"]
+#   feb-up --stop        end a running feb-up (SIGINT to the launch)
+#
+# Output is also written to /tmp/feb-up.log (`feb logs`).
+set -e
+WS="${FEB_WS:-}"; STACK=""; NOISE=""; CAR="false"; FOX="true"; DEADMAN=""; MAXV=""; TRACK=""; QUIET=""; ADAPTER=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --ws) WS="$2"; shift 2;;
+        --stack) STACK="$2"; shift 2;;
+        --noise) NOISE="$2"; shift 2;;
+        --car) CAR="true"; export FEB_CAR=1; shift;;
+        --no-foxglove) FOX="false"; shift;;
+        --deadman) DEADMAN="true"; shift;;
+        --quiet) QUIET=1; shift;;                  # log only; the terminal is in use (key_joy)
+        --max-speed) MAXV="$2"; shift 2;;
+        --track) TRACK="$2"; shift 2;;
+        --adapter) ADAPTER="$2"; shift 2;;            # sim adapter parameters, "k=v,k=v"
+        --stop)
+            if [ -f /tmp/feb-up.pid ] && kill -0 "$(cat /tmp/feb-up.pid)" 2>/dev/null; then
+                PID=$(cat /tmp/feb-up.pid)
+                kill -TERM -- "-$PID" 2>/dev/null || kill -TERM "$PID"
+                for _ in $(seq 1 50); do kill -0 "$PID" 2>/dev/null || break; sleep 0.2; done
+                kill -KILL -- "-$PID" 2>/dev/null     # whatever ignored the TERM (the bridge does)
+                sleep 0.5
+                pkill -KILL -x autodrive_bridg 2>/dev/null; pkill -KILL -x sim_adapter 2>/dev/null   # a bridge seen to outlive its group
+                rm -f /tmp/feb-up.pid
+                echo "feb-up stopped"
+            else
+                echo "nothing running"
+            fi
+            exit 0;;
+        *) echo "feb-up: unknown argument $1" >&2; exit 2;;
+    esac
+done
+if [ -f /tmp/feb-up.pid ] && kill -0 "$(cat /tmp/feb-up.pid)" 2>/dev/null; then
+    echo "feb-up is already running (pid $(cat /tmp/feb-up.pid)); feb stop first" >&2; exit 1
+fi
+source /opt/ros/humble/setup.bash
+source /home/autodrive_devkit/install/setup.bash
+if [ -n "$WS" ] && [ -d "$WS" ]; then
+    if find "$WS" -name package.xml -not -path "*/build/*" -not -path "*/install/*" | grep -q .; then
+        echo "building $WS ..."
+        (cd "$WS" && colcon build --symlink-install 2>&1 | grep -v "^$" | tail -n 20)
+    fi
+    [ -f "$WS/install/setup.bash" ] && source "$WS/install/setup.bash"
+    export FEB_PYDEPS="$WS/.pydeps"
+fi
+[ -z "$DEADMAN" ] && DEADMAN="$CAR"               # the car always needs the dead-man; the sim does not
+[ -z "$MAXV" ] && { [ "$CAR" = true ] && MAXV=1.0 || MAXV=10.0; }
+ARGS=("car:=$CAR" "foxglove:=$FOX" "deadman:=$DEADMAN" "max_speed:=$MAXV")    # ros2 launch rejects empty values
+[ -n "$STACK" ] && ARGS+=("stack:=$STACK")
+[ -n "$NOISE" ] && ARGS+=("noise:=$NOISE")
+[ -n "$TRACK" ] && ARGS+=("track:=$TRACK")
+[ -n "$ADAPTER" ] && ARGS+=("adapter:=$ADAPTER")
+# setsid: the launch and everything it starts form one process group, so --stop can end the lot
+# with one SIGTERM (ros2 launch shuts its nodes down on it; SIGINT is ignored by background jobs).
+# Output goes to the log file; tail relays it here and ends with the launch, so a `feb up` on the
+# laptop returns the moment the launch does.
+: > /tmp/feb-up.log
+setsid ros2 launch feb_tools up.launch.py "${ARGS[@]}" > /tmp/feb-up.log 2>&1 &
+PID=$!
+echo $PID > /tmp/feb-up.pid
+trap 'kill -TERM -- -$PID 2>/dev/null' INT TERM
+if [ -z "$QUIET" ]; then
+    tail -n +1 -f -s 0.5 ---disable-inotify --pid=$PID /tmp/feb-up.log &   # polling: inotify mode has missed the pid exit
+    TAIL=$!
+fi
+wait $PID || true
+[ -n "${TAIL:-}" ] && { wait $TAIL || true; }
+rm -f /tmp/feb-up.pid

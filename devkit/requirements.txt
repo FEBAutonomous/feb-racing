@@ -12,3 +12,6 @@ gevent-websocket==0.10.1
 transforms3d==0.4.2
 pyyaml==6.0.1
 websocket-client==1.6.4
+# the cone racer's solver and its maths, so no package needs a private install
+scipy==1.11.4
+casadi==3.8.1

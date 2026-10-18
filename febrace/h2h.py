@@ -22,7 +22,7 @@ from . import results
 from .runner import BRIDGE_RATE, Attempt
 
 PROXY = pathlib.Path(__file__).with_name("proxy.py")
-PROXY_IMAGE = os.environ.get("FEB_DEVKIT_IMAGE", "ghcr.io/pranman1/feb-devkit:latest")
+PROXY_IMAGE = os.environ.get("FEB_DEVKIT_IMAGE", "ghcr.io/febautonomous/feb-devkit:latest")
 
 
 class Race:

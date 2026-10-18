@@ -23,12 +23,13 @@
 \section{Clone and set up}
 
 \begin{lstlisting}
-git clone https://github.com/Pranman1/feb-racing
+mkdir ~/FEB && cd ~/FEB
+git clone https://github.com/FEBAutonomous/feb-racing
 cd feb-racing
-./feb-sim setup --team "Your Team"
+./feb setup --name "Your Name"
 \end{lstlisting}
 
-Pulls the devkit image and downloads the Mac app into \texttt{\textasciitilde/.feb-sim/app/}.
+Pulls the image, creates your box and downloads the Mac app into \texttt{\textasciitilde/.feb-sim/app/}.
 A few minutes. If the app later refuses to open (``damaged'' or ``cannot be opened''), it is
 unsigned; run once:
 

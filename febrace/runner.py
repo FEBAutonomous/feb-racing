@@ -2,7 +2,7 @@
 the lap and collision telemetry from inside the container, record a bag, tear down.
 
 Used by the organiser's `feb-race` (headless Linux build, submitted images) and by the
-members' `feb-sim practice` (their window, their devkit container with ./stack mounted).
+members' `feb practice` (their window, their devkit container with ./stack mounted).
 """
 import datetime as dt
 import json
@@ -17,7 +17,7 @@ from . import results, rules as rules_mod
 ROS_ENV = "source /opt/ros/humble/setup.bash && source /home/autodrive_devkit/install/setup.bash"
 PROBE = pathlib.Path(__file__).with_name("probe.py")
 PROXY = pathlib.Path(__file__).with_name("proxy.py")
-PROXY_IMAGE = os.environ.get("FEB_DEVKIT_IMAGE", "ghcr.io/pranman1/feb-devkit:latest")
+PROXY_IMAGE = os.environ.get("FEB_DEVKIT_IMAGE", "ghcr.io/febautonomous/feb-devkit:latest")
 BRIDGE_RATE = 10.0   # Hz delivered to every scored container: what a laptop with a window gets
 BAG_TOPICS = ["lidar", "imu", "left_encoder", "right_encoder", "steering", "throttle", "steering_command",
               "throttle_command", "ips", "lap_count", "collision_count", "last_lap_time"]
@@ -25,10 +25,11 @@ BAG_TOPICS = ["lidar", "imu", "left_encoder", "right_encoder", "steering", "thro
 
 class Attempt:
     def __init__(self, image, track, sim_exe, team="unknown", event="practice", rules=None, port=4568,
-                 headless=True, stack_dir=None, stack_cmd="", runs_dir=pathlib.Path("runs")):
+                 headless=True, stack_dir=None, stack_cmd="", runs_dir=pathlib.Path("runs"), adapter=""):
         self.image, self.track, self.sim_exe = image, pathlib.Path(track).resolve(), sim_exe
         self.team, self.event, self.rules = team, event, rules or rules_mod.Rules()
         self.port, self.headless, self.stack_dir, self.stack_cmd = port, headless, stack_dir, stack_cmd
+        self.adapter = adapter
         self.id = dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + team.replace(" ", "_")
         self.dir = pathlib.Path(runs_dir) / self.id
         self.container = "feb-run-" + self.id
@@ -66,7 +67,7 @@ class Attempt:
                "-e", "FEB_FOXGLOVE=0"]
         if self.stack_dir:
             cmd += ["-v", f"{pathlib.Path(self.stack_dir).resolve()}:/home/autodrive_devkit/src/stack",
-                    "-e", f"FEB_LAUNCH={self.stack_cmd}"]
+                    "-e", f"FEB_LAUNCH={self.stack_cmd}", "-e", f"FEB_ADAPTER={self.adapter}"]
         subprocess.run(cmd + [self.image], check=True, stdout=subprocess.DEVNULL)
         subprocess.run(["docker", "cp", str(PROBE), f"{self.container}:/tmp/feb_probe.py"], check=True)
 

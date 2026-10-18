@@ -22,12 +22,13 @@ over plain SSH, so the app has a display.
 \section{Clone and set up}
 
 \begin{lstlisting}
-git clone https://github.com/Pranman1/feb-racing
+mkdir ~/FEB && cd ~/FEB
+git clone https://github.com/FEBAutonomous/feb-racing
 cd feb-racing
-./feb-sim setup --team "Your Team"
+./feb setup --name "Your Name"
 \end{lstlisting}
 
-Pulls the devkit image and downloads the Linux build into \texttt{\textasciitilde/.feb-sim/app/}.
-A few minutes. If \texttt{./feb-sim run} later fails with a Vulkan error, the GPU driver is the
+Pulls the image, creates your box and downloads the Linux build into \texttt{\textasciitilde/.feb-sim/app/}.
+A few minutes. If \texttt{./feb up} later fails with a Vulkan error, the GPU driver is the
 thing to fix; \texttt{vulkaninfo --summary} (package \texttt{vulkan-tools}) shows what is found.
 

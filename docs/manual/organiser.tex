@@ -63,7 +63,7 @@ walls: {diameter: 0.33}
 EOF
 tools/track_design.py tracks/hairpins/design.yaml   # map.png, resolution and origin into track.yaml
 tools/track_build.py tracks/hairpins                # track.json + preview.png
-./feb-sim run --track hairpins                      # look at it
+./feb up --track hairpins                           # look at it
 \end{lstlisting}
 
 The corridor is a smooth closed spline through the waypoints: any number, any shape, no
@@ -201,8 +201,8 @@ leaderboard; the organiser reviews rather than lectures.
 \section{Checklist for the first run-through}
 
 \begin{enumerate}
-  \item Make the devkit package public on GitHub (Packages, \texttt{feb-devkit}, Package settings, Change visibility). Until then \cmd{feb-sim setup} fails at the pull for anyone but you.
-  \item On a member laptop (your Mac): follow the competitor manual exactly as written, from \cmd{git clone} to \cmd{./feb-sim submit}. Note every step that needs a hint the manual does not give.
+  \item Make the devkit package public on GitHub (Packages, \texttt{feb-devkit}, Package settings, Change visibility). Until then \cmd{feb setup} fails at the pull for anyone but you.
+  \item On a member laptop (your Mac): follow the competitor manual exactly as written, from \cmd{git clone} to \cmd{./feb submit}. Note every step that needs a hint the manual does not give.
   \item Design the first secret track, write its event file, push it.
   \item Run \cmd{./feb-race event} once with the example team to see a full result land on the site.
 \end{enumerate}
@@ -213,7 +213,7 @@ leaderboard; the organiser reviews rather than lectures.
 
 \section{What reaches members, and how}
 
-Members run \cmd{./feb-sim update} (or just \cmd{git pull}); nothing is pushed to them.
+Members run \cmd{./feb update} (or just \cmd{git pull}); nothing is pushed to them.
 The launcher tells them when a newer app exists.
 
 \begin{tabularx}{\linewidth}{lXl}
@@ -222,8 +222,8 @@ You change & Members get it by & App rebuild?\\
 \midrule
 A practice track in \file{tracks/} & \cmd{git pull}: the launcher passes the repo's tracks folder to the app, so the track picker shows it & no (only to ship it inside the app)\\
 Launcher, harness, docs, rules & \cmd{git pull} & no\\
-The devkit image (\file{devkit/}) & CI publishes it; \cmd{feb-sim update} pulls it; their next image build inherits it & no\\
-The simulator itself (\file{Assets/FEB}) & you build and upload the release; \cmd{feb-sim update} replaces the app & yes\\
+The devkit image (\file{devkit/}) & CI publishes it; \cmd{feb update} pulls it and replaces their box; their next image build inherits it & no\\
+The simulator itself (\file{Assets/FEB}) & you build and upload the release; \cmd{feb update} replaces the app & yes\\
 Results, events, site & nothing: the site rebuilds on push & no\\
 \bottomrule
 \end{tabularx}
@@ -244,12 +244,12 @@ cd ~/FEB/feb-sim
 tar -C Builds/linux --exclude=./runs -czf FEB-Simulator-linux.tar.gz .
 (cd Builds/mac && zip -qr ../../FEB-Simulator-mac.zip "FEB Simulator.app")
 (cd Builds/windows && zip -qr ../../FEB-Simulator-windows.zip .)
-gh release upload v0.1.0 -R Pranman1/feb-racing --clobber FEB-Simulator-*.tar.gz FEB-Simulator-*.zip
+gh release upload v0.1.0 -R FEBAutonomous/feb-racing --clobber FEB-Simulator-*.tar.gz FEB-Simulator-*.zip
 \end{lstlisting}
 
 The shipped tracks are copied from \file{../feb-racing/tracks} at build time. The first build
 imports the whole project (30 to 90 minutes); later builds take minutes. Logs are in
-\file{Logs/}. \cmd{feb-sim setup} and \cmd{feb-sim update} download from the latest release and remember
+\file{Logs/}. \cmd{feb setup} and \cmd{feb update} download from the latest release and remember
 the asset's upload time, so uploading with \cmd{--clobber} to the existing release is enough:
 members are told a newer app exists the next time they run. Make a new release tag when the
 launcher's expectations change.
@@ -297,7 +297,7 @@ the bridge and the command in \texttt{FEB\_LAUNCH}. \file{devkit/feb\_tools} add
 house driver and the sensor-noise node. The entrypoint also starts \texttt{foxglove\_bridge}
 on port 8765 (off with \texttt{FEB\_FOXGLOVE=0}, which the harness and the opponent container
 set), so members visualise with the Foxglove app on any OS instead of rviz. Pushing a change under \file{devkit/} rebuilds and
-publishes \file{ghcr.io/pranman1/feb-devkit} for amd64 and arm64
+publishes \file{ghcr.io/febautonomous/feb-devkit} for amd64 and arm64
 (\file{.github/workflows/devkit.yml}). Members' images are built \emph{from} this one, so a
 devkit change reaches them on their next image build.
 
@@ -320,7 +320,7 @@ that physics keeps real time; headless runs need neither. Details: \file{STATUS.
 Symptom & Cause and fix\\
 \midrule
 No window after a driver update & GPU driver mismatch on the PC: reboot.\\
-Port 4567 in use & A member-style container is running: \cmd{./feb-sim stop}; harness ports start at 4568.\\
+Port 4567 in use & A box is running on it (that is normal; practice uses 4667, the harness its own ports). To free it: \cmd{./feb reset}.\\
 Attempt shows no laps & The image's stack never started: read \file{runs/<id>/container.log}. Check \texttt{FEB\_LAUNCH} and that the packages built.\\
 Result flagged \emph{restricted topics} & A node in the image subscribed to \texttt{ips}, \texttt{odom}, \texttt{tf}, counters or \texttt{reset\_command}. The audit lists the node names.\\
 Two cars touch at the start & The track's spawn straight is too narrow for the grid; set \texttt{max\_cars: 1} in its \file{track.yaml}.\\
@@ -344,7 +344,7 @@ Command & What it does\\
 \cmd{feb-race qualified} & who has qualified, and what each team still lacks\\
 \cmd{feb-race site} & rebuild \file{site/data.json} locally\\
 \midrule
-\cmd{feb-sim run --track T --stack S --opponent L --cars N} & the member launcher, also handy for looking at a new track\\
+\cmd{feb up --track T --driver D --opponent L --cars N} & the member launcher, also handy for looking at a new track\\
 \cmd{tools/track\_design.py FOLDER/design.yaml} & waypoints to \file{map.png}\\
 \cmd{tools/track\_build.py FOLDER} & \file{map.png} to \file{track.json} and \file{preview.png}\\
 \bottomrule
@@ -354,7 +354,7 @@ Command & What it does\\
 
 \begin{lstlisting}
 feb-racing/
-    feb-sim, feb-race          launchers (Python 3, no dependencies beyond docker and gh)
+    feb, feb-race              launchers (Python 3, no dependencies beyond docker and gh)
     febrace/                   harness library: runner, probe, proxy, rules, results, site, h2h
     devkit/                    Dockerfile + entrypoint of the devkit image, feb_tools
     starter_kit/               feb_driver package + submission Dockerfile

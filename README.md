@@ -12,7 +12,7 @@ to the RoboRacer Sim Racing League and to the real 1:10 cars.
 | Simulator (Unity fork, native Mac/Windows/Linux apps) | `../feb-sim` (separate repo) |
 | Devkit image (ROS 2 Humble + AutoDRIVE bridge) | `devkit/` |
 | Tracks (PNG in, geometry out) | `tracks/`, `tools/track_design.py`, `tools/track_build.py` |
-| One-command launcher | `./feb-sim` |
+| One-command launcher | `./feb` |
 | Organiser harness (time-attack, nightly reruns, head-to-head brackets) | `./feb-race`, `febrace/` |
 | Leaderboard site (GitHub Pages) | `site/`, `results/`, `events/`, `submissions.yaml` |
 | Starter kit (reactive driver, sysid probe, submission Dockerfile) | `starter_kit/` |
@@ -23,11 +23,12 @@ to the RoboRacer Sim Racing League and to the real 1:10 cars.
 ## Quick start (members)
 
 ```bash
-git clone https://github.com/Pranman1/feb-racing && cd feb-racing
-./feb-sim setup                 # checks Docker, pulls the devkit, downloads the simulator app
-./feb-sim run                   # simulator + bridge, drive with the keyboard
-./feb-sim run --stack "ros2 launch feb_driver drive.launch.py"   # your stack (see starter_kit/)
-./feb-sim practice --stack "..."                                 # scored attempt, then ./feb-sim submit
+git clone https://github.com/FEBAutonomous/feb-racing && cd feb-racing
+./feb setup                     # checks Docker, pulls the image, downloads the simulator app, makes your box
+./feb up                        # simulator + the house nodes, drive with the keyboard
+./feb up --stack "ros2 launch feb_driver drive.launch.py"   # your stack (see starter_kit/)
+./feb shell                     # a terminal in the box; ./feb code for VS Code in it
+./feb practice --stack "..."                                 # scored attempt, then ./feb submit
 ```
 
 Your ROS 2 packages live in `stack/` and are mounted into the container and built on start.
@@ -38,7 +39,7 @@ Your ROS 2 packages live in `stack/` and are mounted into the container and buil
 mkdir tracks/mytrack && $EDITOR tracks/mytrack/design.yaml     # waypoints + width
 tools/track_design.py tracks/mytrack/design.yaml               # -> map.png
 tools/track_build.py tracks/mytrack                            # -> track.json + preview.png
-./feb-sim run --track mytrack
+./feb up --track mytrack
 ```
 
 Any white-corridor PNG works as `map.png`, including SLAM occupancy grids of real tracks

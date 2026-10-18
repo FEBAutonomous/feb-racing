@@ -8,7 +8,7 @@ HDRP) with everything FEB-specific under `Assets/FEB`. The RoboRacer vehicle pre
 
 1. Unity editor without root: `feb-racing/tools/unity_install.py <downloads> ~/Unity/Hub/Editor/2022.3.52f1`
    (already done on the team PC; see `docs/unity-licence.md` for activation).
-2. Clone the fork: `git clone -b feb git@github.com:Pranman1/feb-sim.git` next to `feb-racing`.
+2. Clone the fork: `git clone -b feb git@github.com:FEBAutonomous/feb-sim.git` next to `feb-racing`.
    The shipped tracks are copied from `../feb-racing/tracks` at build time (`FEB_TRACKS` overrides).
 3. Unzip the large upstream assets once: `Tools/unzip-and-clean.sh` (only needed to open the
    other AutoDRIVE scenes; the FEB scene does not use them).
@@ -33,7 +33,7 @@ tar -C Builds/linux --exclude=./runs --exclude="./FEB Simulator_BurstDebugInform
 (cd Builds/windows && zip -qr ../../FEB-Simulator-windows.zip . -x "FEB Simulator_BurstDebugInformation_DoNotShip/*")
 ```
 
-Upload the three archives to a GitHub release of `feb-racing`; `feb-sim setup` downloads
+Upload the three archives to a GitHub release of `feb-racing`; `feb setup` downloads
 `.../releases/latest/download/<archive>`.
 
 ## What the fork adds (Assets/FEB)

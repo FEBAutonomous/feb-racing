@@ -54,7 +54,7 @@ def run(path, p, laps=3, speed="encoder", pose_noise=0.0, pose_lag=0.0, delay=No
     p["v_cap"] = min(p["v_cap"], float(v_plan.max()) + 0.3)
     mpc = KinematicMPC(p)
     if not mpc.ok:
-        sys.exit("CasADi is missing: install it (starter_kit/feb_cone_racer/install_deps.sh)")
+        sys.exit("CasADi is missing: it is in the devkit image, so run this in the box (feb shell)")
     ctl = RaceController(p, mpc)
     ctl.set_raceline(line, v_plan)
     plan_lap = float(np.sum(np.diff(ctl.line.s) / np.maximum(v_plan, 0.2)))

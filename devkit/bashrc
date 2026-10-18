@@ -1,0 +1,7 @@
+# the box's shell: ROS and the devkit sourced in every terminal, plus the workspace feb-sim named
+[ -z "$PS1" ] && return
+source /opt/ros/humble/setup.bash
+source /home/autodrive_devkit/install/setup.bash
+[ -n "$FEB_WS" ] && [ -f "$FEB_WS/install/setup.bash" ] && source "$FEB_WS/install/setup.bash"
+export PS1='\[\e[34m\]box\[\e[0m\]:\w\$ '
+alias ll='ls -l'

@@ -1,0 +1,12 @@
+name: feb_cone_racer
+kind: cones
+maintainer: FEB autonomous team
+packages: [feb_cone_racer]     # what feb submit copies to the team repo: your own packages (shared ones like feb_cone_ordering are already there)
+modes:
+  trackdrive:
+    launch: race.launch.py
+    max_speed: 10.0
+default_mode: trackdrive
+# the racer runs its own throttle law (tyre model, slip): the sim adapter must be the identity,
+# wheel speed = throttle * 25.11 with no trim, which is what the simulator does with a throttle
+adapter: {speed_per_throttle: 25.11, throttle_kp: 0.0, throttle_ki: 0.0, throttle_slew: 100.0, speed_window: 0.05}

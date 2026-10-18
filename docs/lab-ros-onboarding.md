@@ -2,7 +2,7 @@
 
 One lab, two sessions, adapted from EECS C106A Labs 1 and 2 (Spring 2026) to run in our devkit
 instead of the course's instructional accounts and distrobox container. Every command below
-was run as written, in order, on 2026-10-08 on the `gui` devkit image. Do them in order.
+was run as written, in order, on 2026-10-16 in the box. Do them in order.
 
 By the end you can:
 
@@ -18,19 +18,20 @@ and a listener), `turtle_patrol_interface` (the `Patrol` service definition) and
 
 ## 0. Setup, once
 
-You need Docker Desktop (Mac, Windows) or Docker Engine (Linux), git, and about 6 GB of disk.
+You need Docker Desktop (Mac, Windows) or Docker Engine (Linux), git, and about 8 GB of disk.
 
 ```
-git clone https://github.com/Pranman1/feb-racing.git && cd feb-racing
-./feb-sim setup --team "Your Name"
+mkdir ~/FEB && cd ~/FEB
+git clone https://github.com/FEBAutonomous/feb-racing.git && cd feb-racing
+./feb setup --name "Your Name"
 ```
 
-Already have the clone? `./feb-sim update` instead: it pulls the repo (the `labs/` folder
-arrived on 2026-10-08), newer devkit images and the newer simulator app in one go.
+Already have the clone? `./feb update` instead: it pulls the repo, the newer image and the
+newer simulator app in one go.
 
-`setup` checks Docker, pulls the devkit image and downloads the simulator app. The simulator
-is not used in this lab. On a Mac, keep the clone under your home folder (`/Users/...`): Docker
-can only mount folders from there.
+`setup` checks Docker, pulls the image, downloads the simulator app (not used in this lab) and
+creates your box. `docs/devkit.md` is the one-page reference for it. On a Mac, keep `~/FEB`
+under `/Users`: Docker can only mount folders from there.
 
 ## 1. What is ROS 2, in one page
 
@@ -52,75 +53,66 @@ topics, the racer node subscribes, and it publishes steering and throttle topics
 ## 2. The devkit: our container
 
 The course runs ROS 2 in a distrobox container on the lab machines. We run it in a Docker
-container on your laptop. Same idea, the "sealed lunchbox": Ubuntu, ROS 2 Humble, all our
-dependencies and tools are inside the image; your code stays on your laptop and is mounted in.
-Close the container and your laptop is untouched; start it again and it is identical.
+container on your laptop, which we call the box. Same idea: Ubuntu, ROS 2 Humble, all our
+dependencies and tools are inside; your code stays on your laptop and is mounted in. The box
+keeps what you install in it and is there every time you come back.
 
-Start it with the turtle simulator and a desktop in your browser:
+Open a terminal in it, with the turtle simulator and its desktop in your browser:
 
 ```
-./feb-sim ros --gui --apps turtlesim --no-rviz
+./feb shell --gui --apps turtlesim
 ```
 
-What happens: the launcher starts the `gui` image (first time: a 2.7 GB download), mounts your
-`stack/` folder into it, builds whatever packages are there, starts a screen inside the
-container and serves it as a web page, opens `turtlesim` on that screen, and then drops you into
-a shell **inside the container**. Your browser opens `http://localhost:6080/vnc.html?autoconnect=1&resize=scale`
-with a turtle in a blue window. If the tab did not open, paste that URL.
+What happens: your browser opens `http://localhost:6080/vnc.html?autoconnect=1&resize=scale`,
+the box's screen, with a turtle in a blue window, and your terminal is now **inside the box**.
+If the tab did not open, paste that URL.
 
-Your prompt now reads `root@<id>:/home/autodrive_devkit#`. You are inside. The commands you
-will use from your laptop's own terminal, from the repo folder:
+Your prompt now reads `box:~/FEB/feb-racing$`. The commands you will use from your laptop's own
+terminal, from the repo folder:
 
 | Command | What it does |
 |---|---|
-| `./feb-sim ros --gui --apps turtlesim --no-rviz` | start the devkit with a desktop and turtlesim, shell inside |
-| `./feb-sim ros --gui --apps "turtlesim rqt"` | the same with rviz2 and rqt open too |
-| `./feb-sim ros` | no desktop, no apps: a plain ROS 2 shell (the base image, smaller) |
-| `./feb-sim shell` | another terminal inside the running container; open as many as you like |
-| `./feb-sim logs -f` | what the container printed: the package build, every node it started |
-| `./feb-sim stop` | stop and remove the container; your `stack/` folder stays |
-| `./feb-sim ros --src ~/some/folder` | mount a different folder instead of `stack/` |
-| `./feb-sim run --track loop` | later: the simulator plus the devkit, for the racing labs |
+| `./feb shell` | a terminal inside the box; open as many as you like |
+| `./feb shell --gui` | the same, and the box's desktop in a browser tab |
+| `./feb shell --gui --apps "turtlesim rqt"` | ...with those windows opened for you |
+| `./feb code` | VS Code attached to the box, its terminals inside |
+| `./feb reset` | wipe the box and start fresh; your files stay |
+| `./feb up --track loop` | later: the simulator, for the racing labs |
 
-You never type a `docker` command. Each of those is one `docker run` or `docker exec` that the
-launcher fills in with the right ports and the right folder for your machine; `docs/devkit.md`
-shows the underlying commands if you are curious.
+You never type a `docker` command. `docs/devkit.md` shows what each of those does underneath.
 
 Two habits:
 
-- A terminal inside the container is one you opened with `./feb-sim ros` or `./feb-sim shell`.
+- A terminal inside the box is one you opened with `./feb shell` or in VS Code after `./feb code`.
   `ros2` and `colcon` only exist there. If a command says `ros2: command not found`, you are in
   a laptop terminal.
-- `exit` in a container shell leaves the container running; `./feb-sim stop` ends it. Do that
-  when you finish, or the next `./feb-sim ros` replaces it anyway.
+- Anything with a window (`rqt_graph &`, `rviz2 &`) opens on the desktop in the browser tab.
 
 ## 3. The workspace
 
-Inside the container, run `pwd` and `ls`:
+Inside the box, run `pwd` and `ls`:
 
 ```
-/home/autodrive_devkit
-build  desktop.sh  install  log  rviz  src
+/home/feb/FEB/feb-racing
+README.md  docs  feb  feb-sim  labs  stack  starter_kit  tracks  ...
 ```
 
-This folder is the ROS workspace: the place `colcon` builds from. It is the same layout the
-course lab describes:
+That is your clone, the same folder as on your laptop: `/home/feb/FEB` in the box is `~/FEB`
+on the laptop, mounted, not copied. A file you save on the laptop is there at once, and a package
+you create inside the box appears on the laptop at once, owned by you.
 
-- `src/` holds the source of every package. `src/stack` **is your laptop's `feb-racing/stack/`
-  folder**, mounted, not copied: a file you save on the laptop is there at once, and a package
-  you create inside the container appears on the laptop at once. `src/autodrive_devkit` and
-  `src/feb_tools` are the simulator bridge and house tools, part of the image.
-- `build/` is where packages are compiled: the prep station.
-- `install/` is the result: executables, message code, and the `setup.bash` that tells ROS
+`stack/` is your ROS workspace: the place `colcon` builds from. It is the same layout the course
+lab describes, with the packages directly under the workspace instead of under `src/`:
+
+- `stack/<package>/` is the source of each package you make.
+- `stack/build/` is where packages are compiled: the prep station.
+- `stack/install/` is the result: executables, message code, and the `setup.bash` that tells ROS
   where it all is. Sourcing it is how ROS finds *your* packages.
-- `log/` is what every build printed, in case something fails.
+- `stack/log/` is what every build printed, in case something fails.
 
-`build/`, `install/` and `log/` live in the container and vanish on `stop`; that is fine, the
-container rebuilds `src/` every time it starts. Only `src/stack` is yours and persistent.
-
-**Linux only:** the container runs as root, so a package created *inside* it is owned by root
-on your laptop and your editor cannot save it. Once, after creating packages, run on the laptop:
-`sudo chown -R $USER stack`. Mac and Windows Docker Desktop map the ownership for you.
+All of it is on your laptop and survives anything you do to the box. The simulator bridge, the
+car's drivers and our house nodes are a second workspace inside the image,
+`/home/autodrive_devkit`, already built and already sourced in every box terminal.
 
 ## 4. Anatomy of a package
 
@@ -152,7 +144,7 @@ Every package you make goes in `src/stack` (anywhere else is inside the containe
 and lost on stop). Create two: a bare one and one with dependencies declared.
 
 ```
-cd /home/autodrive_devkit/src/stack
+cd ~/FEB/feb-racing/stack
 ros2 pkg create foo --build-type ament_python
 ros2 pkg create bar --build-type ament_python --dependencies rclpy std_msgs geometry_msgs turtlesim
 ls foo
@@ -169,7 +161,7 @@ module your nodes go in, with an empty `__init__.py`) and `test/` (style checks,
 Build from the workspace root, not from inside the package:
 
 ```
-cd /home/autodrive_devkit
+cd ~/FEB/feb-racing/stack
 echo $AMENT_PREFIX_PATH
 colcon build --symlink-install --packages-select foo bar
 source install/setup.bash
@@ -177,15 +169,15 @@ echo $AMENT_PREFIX_PATH
 ros2 pkg prefix bar
 ```
 
-`--packages-select` builds just the ones you name (a plain `colcon build` also rebuilds the
-bridge, which works but takes longer). `--symlink-install` links the installed Python files to
+`--packages-select` builds just the ones you name (a plain `colcon build` builds everything in
+`stack/`, which is fine too). `--symlink-install` links the installed Python files to
 your source, so an edit takes effect on the next `ros2 run` without rebuilding; you rebuild only
 when you add a package, an executable or a message. `source install/setup.bash` adds your
 packages to the paths ROS searches, which is the difference between the two `echo` lines. Every
-new shell needs it (`./feb-sim shell` does it for you).
+new shell needs it (a new `./feb shell` does it for you).
 
 **Checkpoint 1.** Be able to explain the workspace layout and what `build`, `install`, `log` and
-`src/stack` are; show the build; explain `package.xml`; find a package's path.
+`stack/` are; show the build; explain `package.xml`; find a package's path.
 
 ## 6. Nodes, topics and services
 
@@ -203,7 +195,7 @@ devkit's own node that lets the Foxglove app on your laptop see topics; ignore i
 Drive the turtle. In a **second** terminal on your laptop:
 
 ```
-./feb-sim shell
+./feb shell
 ros2 run turtlesim turtle_teleop_key
 ```
 
@@ -211,7 +203,7 @@ Click into that terminal and use the arrow keys: the turtle in the browser moves
 `ros2 run <package> <executable>`: the teleop node reads your keys and publishes `Twist`
 messages on `/turtle1/cmd_vel`; the turtlesim node subscribes and moves the turtle.
 
-See the graph. Leave the teleop running, and in a third terminal (`./feb-sim shell`):
+See the graph. Leave the teleop running, and in a third terminal (`./feb shell`):
 
 ```
 rqt_graph &
@@ -271,14 +263,14 @@ cp -r labs/onboarding/chatter stack/
 Then inside the container:
 
 ```
-cd /home/autodrive_devkit
+cd ~/FEB/feb-racing/stack
 colcon build --symlink-install --packages-select chatter
 source install/setup.bash
 ros2 pkg executables chatter
 ```
 
 Two executables, `talker` and `listener`. Run the first in this terminal and the second in
-another (`./feb-sim shell`):
+another (`./feb shell`):
 
 ```
 ros2 run chatter talker
@@ -320,7 +312,7 @@ Custom messages are inconvenient in an `ament_python` package, so the convention
 `ament_cmake` *interface package* that holds only message and service definitions:
 
 ```
-cd /home/autodrive_devkit/src/stack
+cd ~/FEB/feb-racing/stack
 ros2 pkg create my_chatter_msgs --build-type ament_cmake
 mkdir my_chatter_msgs/msg
 ```
@@ -349,14 +341,14 @@ ament_export_dependencies(rosidl_default_runtime)
 Build and check ROS can see it:
 
 ```
-cd /home/autodrive_devkit
+cd ~/FEB/feb-racing/stack
 colcon build --symlink-install --packages-select my_chatter_msgs
 source install/setup.bash
 ros2 interface show my_chatter_msgs/msg/TimestampString
 ```
 
 **The nodes.** Create `my_chatter` (`ament_python`, dependencies `rclpy my_chatter_msgs`) in
-`src/stack`, and write two files in its module folder, using `chatter` as your model:
+`stack/`, and write two files in its module folder, using `chatter` as your model:
 
 - `my_talker.py`: in a loop, `input()` a line from the terminal, make a
   `TimestampString` with the text and `self.get_clock().now().nanoseconds`, publish it on
@@ -367,7 +359,7 @@ ros2 interface show my_chatter_msgs/msg/TimestampString
   can differ from the first.
 
 Add entry points `my_talker` and `my_listener` to `setup.py`, build with
-`--packages-select my_chatter`, source, and run each in its own `./feb-sim shell`:
+`--packages-select my_chatter`, source, and run each in its own `./feb shell`:
 
 ```
 ros2 run my_chatter my_talker
@@ -391,7 +383,7 @@ dependencies `rclpy std_msgs geometry_msgs turtlesim`). Its node `turtle_control
    keys. Reading single keystrokes from a terminal is fiddly; `input()` plus Enter is fine
    (`w`/`a`/`s`/`d`, say). Bonus if you capture keys directly.
 3. Works for several turtles at once: spawn more with `/spawn` (section 6) and run one
-   controller per turtle in its own `./feb-sim shell`, each with a different name.
+   controller per turtle in its own `./feb shell`, each with a different name.
 
 One thing you will meet: a node that publishes within a few hundred milliseconds of starting
 can lose those first messages, because turtlesim has not yet discovered the new publisher.
@@ -433,7 +425,7 @@ a `Twist` with the requested speed and turn rate, and a timer publishes it on
 for the answer. Build and run (server and client in separate shells):
 
 ```
-cd /home/autodrive_devkit
+cd ~/FEB/feb-racing/stack
 colcon build --symlink-install --packages-select turtle_patrol_interface turtle_patrol
 source install/setup.bash
 ros2 run turtle_patrol patrol_server
@@ -517,14 +509,13 @@ it stays private.
 
 | Symptom | Cause, fix |
 |---|---|
-| `ros2: command not found` | you are in a laptop terminal; `./feb-sim shell` |
+| `ros2: command not found` | you are in a laptop terminal; `./feb shell` |
 | `Package 'x' not found` after building | this shell has not sourced the new build: `source install/setup.bash` |
-| `ros2 pkg create` made files you cannot edit (Linux) | root-owned: `sudo chown -R $USER stack` on the laptop |
-| the browser desktop says not connected | reload the tab; still nothing, `./feb-sim logs -n 50` |
+| the browser desktop says not connected | reload the tab; still nothing, `./feb reset` and `./feb shell --gui` again |
 | `mounts denied` (Mac) | the clone is outside `/Users`: move it |
-| a package I created is gone after `stop` | it was created outside `src/stack`; recreate it there |
+| a package I created is gone after `./feb reset` | it was created outside `~/FEB`; recreate it in `stack/` |
 | my node's first message never arrives | discovery: see section 9 |
-| the build fails | `./feb-sim logs -n 100`, or run `colcon build` again and read the error |
+| the build fails | run `colcon build` again in `stack/` and read the error |
 
 ## Checkoff summary
 

@@ -2,6 +2,120 @@
 
 Newest first.
 
+## 2026-10-18: the racer on the contract, practice as Pranav, the team repo seeded
+
+- `feb_cone_racer` moved onto the contract: `/scan`, `/camera/color/image_raw`, `/imu`, `/odom`
+  in, `/drive` out, `/feb/state` honoured (race state only advances while AUTONOMOUS; the MPC's
+  warm start and the throttle integrator reset when it begins, map and position kept). Its own
+  throttle law stays and `/drive` carries the wheel speed it asks for; its `driver.yaml` tells the
+  sim adapter to be the identity (`adapter: {speed_per_throttle: 25.11, throttle_kp: 0, ...}`),
+  because the adapter's PI trim on top of the racer's own loop over-accelerated the car off the
+  line at the first corner (found on loop_cones: 3.9 m/s two seconds into racing, 32 hits).
+  `driver.yaml` gained that optional `adapter:` block (passed through `feb up` and practice as a
+  launch argument / `FEB_ADAPTER`). Free run headless on loop_cones at the bridge's 22 Hz: 27 laps
+  in 4.5 min, best 8.0 s, 2 hits. **Scored at the league's 10 Hz it is not clean**: twice dsq on
+  loop_cones, the map match lost two seconds into racing (0.2 m off, then 3 m) at 3 m/s, with the
+  adapter identity confirmed inside the practice container and a 0.05 s odometry window tried.
+  Left as the contract version (the old one cannot run under the house layer at all, the
+  supervisor's zero command would fight its throttle), marked sim-only and not released; the 10 Hz
+  localisation is the open item. The one Pranav practice of it (dsq, 23 hits) was deleted.
+- `feb practice` no longer stops a running `feb up` (it has its own container and port).
+  `feb-up --stop` also kills a bridge by name: one was seen to outlive its process group and hold
+  4567, which made the next run's simulator connect to a dead bridge.
+- Esses out of the qualifying set (`esses`, `esses_cones`: `qualifying: false`): ten laps at a safe
+  pace do not fit the 300 s attempt. The cone driver's `max_speed` 1.2 -> 1.7 m/s so ten laps of
+  loop_cones fit (clean, 23.2 s best lap).
+- The GitHub CLI is treated as absent when not signed in: `feb submit` then pushes the branches
+  with git and prints the two compare links. `have_gh()` with a 15 s timeout.
+- `feb-stack/shared/` holds `feb_mission` and `feb_cone_ordering` (one copy for the car);
+  `packages:` lists only your own, submit refuses a shared name. `docs/quickstart.md` rewritten as
+  the one-page member doc.
+- Practice as Pranav (full rules, 10 laps + warm-up, 300 s): loop finished 0 hits 173.4 s (best
+  17.3), porto finished 0 hits 168.2 s (best 16.5), loop_cones with the cone driver finished 0 hits
+  235.5 s (best 23.2). Kept in `runs/` for `feb submit`.
+
+## 2026-10-17: the organisation, the team repo, submit pushes code
+
+- Repos moved to the FEBAutonomous organisation: `feb-racing`, `feb-sim`, and the new
+  `feb-stack` (the team's drivers, `drivers/<person>/<package>`, seeded with a README only). Every
+  URL, the image name `ghcr.io/febautonomous/feb-devkit` and the local remotes updated. History of
+  both existing repos rewritten first to drop the assistant co-author trailers (messages only;
+  authors, dates and files unchanged); anyone with an old clone re-clones once.
+- `feb submit` now does two things: the results PR to the scoreboard, and the driver's packages
+  (the `packages:` list in its `driver.yaml`) copied into `feb-stack/drivers/<name>/` on a branch
+  named after the member, pushed to the repo or to their fork, with a PR to main opened or
+  updated. Unchanged code is detected and skipped. `--no-code`, `--no-results`, `--dry-run`.
+  Tested against a scratch repo: first push, unchanged, edited.
+- On the car the default workspace is `~/FEB/feb-stack` when it exists; on laptops it stays
+  `stack/`. `feb practice` records the driver and workspace in the run folder for submit.
+- `feb setup --name` (alias of `--team`): each person is their own entry on the board.
+- The qualifying bar is zero collisions; submit posts only clean runs by default.
+
+## 2026-10-16: devkit v2, the box
+
+- The devkit is now a persistent container per member, "the box" (`docs/devkit.md`, plan and
+  rationale in `docs/manual/devkit_v2_plan.pdf`, the VM question in
+  `../reports/ROS 2 VM options for the devkit.md`). One `docker run` of the `:gui` image, user
+  `feb`, the member's FEB folder (the parent of the clone) mounted at `/home/feb/FEB`, the web
+  desktop always on, `--restart unless-stopped`. Builds are incremental, apt/pip installs stay,
+  files created inside are the member's. `feb reset` wipes it; `feb update` replaces it when the
+  image changed.
+- Launcher renamed `feb` (the `feb-sim` name is gone). Commands: `setup`, `up` (was `run`),
+  `shell [--gui --apps -c]` (was `ros`), `code` (VS Code or Cursor attached to the box), `stop`,
+  `reset`, `logs`, `update`, `practice`, `submit`. `up` runs `feb-up` in the box (build the
+  workspace, launch `feb_tools/up.launch.py`), waits for port 4567 for up to 15 min, then starts
+  the simulator app and Foxglove. `--ws` picks any workspace under the FEB folder; `--driver NAME
+  --mode-name M` reads the package's `driver.yaml`.
+- The contract: every driver reads `/scan`, `/odom`, `/imu`, `/camera/color/image_raw` and
+  writes `/drive` (AckermannDriveStamped), the RoboRacer car's topics. `feb_tools/sim_adapter`
+  provides them from the simulator (odometry dead-reckoned from encoders + gyro, like the VESC's)
+  and turns `/ackermann_cmd` into throttle/steering with the throttle law that used to sit in
+  every driver. `feb_driver` and `feb_cone_driver` moved onto it; `feb_cone_racer` and the house
+  driver still read the simulator's topics directly (internal, unreleased).
+- `feb_supervisor`: the safety state machine between every driver and the wheels, IDLE / MANUAL /
+  AUTONOMOUS / STOP, gamepad dead-man (required on the car, off in the sim), speed cap, lidar
+  watchdog, optional time-to-collision stop, publishes `/feb/state`. Same node in sim and on car.
+- Car mode: `feb up --car` launches the VESC driver (f1tenth/vesc, humble, built into the image),
+  `rplidar_ros` for the S2, `joy`, with the RoboRacer config values in `feb_tools/config/car.yaml`.
+  On the Jetson `feb setup` passes `/dev` into the box. **Untested on hardware** (the Jetson is not
+  flashed yet); the sim side of the same launch is tested.
+- Driver packets: `driver.yaml` (name, kind walls|cones|any, modes with launch + max_speed,
+  default_mode). Standard modes `inspection` and `trackdrive`. The process to the car: PR to the
+  team's stack repo with a practice id, lead reruns practice, merge, `git pull` on the Jetson,
+  `feb up --car --driver X --mode-name inspection`.
+- Image: `feb` user, sudo, node + Claude Code CLI, scipy and casadi (no more `.pydeps`),
+  ackermann_msgs, joy, rplidar_ros, serial_driver; `Dockerfile.gui` takes `ARG BASE` for local
+  builds. The league entrypoint builds only `src/stack` and starts the house layer through the
+  same launch file, so practice and submissions get the adapter and supervisor too.
+- Docs: `docs/devkit.md` rewritten (new member, existing member, commands, files, contract,
+  modes, car), `docs/quickstart.md` added, lab and the three competitor manuals updated, handbook
+  and starter-kit doc updated. Removed as redundant: `docs/devkit-ros-plan.md` (superseded) and
+  `docs/manual/competitor.{tex,pdf}` (the old combined manual; the three per-system manuals and
+  `docs/starter-kit.md` cover it).
+- `feb practice --driver NAME` with no `--track` now scores the driver's whole practice set: every
+  qualifying track of its kind (walls: loop, esses, porto; cones: loop_cones, esses_cones), one
+  attempt each, a summary table at the end. `feb submit` posts every finished run not yet posted
+  as one pull request (`.submitted` marker per run; `--all` for dnf too, `--dry-run` to look).
+  The site gained an Overall board per kind: totals summed over that kind's qualifying tracks,
+  teams that finished all of them, verified only if every leg is. New qualifying tracks join both
+  the set and the board automatically.
+- Per-target config: the starter drivers load `config/<name>.car.yaml` on top of their base yaml
+  when `FEB_CAR=1`, so a driver carries its car-only numbers (speed, bubble, steering lag) beside
+  the shared ones. Both ship a commented template. The racer keeps its `FEB_RACER_PARAMS` route.
+- The car's rules in the simulator: `feb up --deadman` runs the supervisor with the dead-man
+  required and makes the terminal the gamepad (`feb_tools/key_joy`: SPACE = RB, M = LB, arrows,
+  X stop, Q quit; a key is held while the terminal repeats it, so release stops the car in about
+  0.35 s). The starter kit gained `feb_mission`, the template for a stack with memory, included by
+  the drivers' launch files when it is in the workspace: turns
+  `/feb/state` into `on_go` / `on_stop` hooks and publishes `/feb/mission/live`; the rule is "on
+  AUTONOMOUS, start clean". Documented in `docs/devkit.md`.
+- Starter driver retuned for the tight tracks at the 10 Hz scoring rate: bubble 0.40 -> 0.50,
+  max_speed 2.5 -> 2.0, lat_accel 6.0 -> 4.5, brake_margin 0.40 -> 0.55. Before: one hit per lap
+  on Porto (the old code too, 3 in 3 laps; not a regression of the contract move). After, two-lap
+  practice at 10 Hz: porto 0 hits 16.8 s, loop 0 hits 17.3 s, esses 0 hits 34.0 s, circuit 0 hits
+  68.4 s. About 3 s a lap slower than before on the loop; the template a member copies must not
+  touch walls.
+
 ## 2026-09-16 - hardware options report, real circuits, two-car start fixed
 
 - Report for the budget committee (superseded 2026-09-24 by `docs/proposal/overleaf/main.pdf`; the old file is deleted): 12 pages, the
@@ -218,9 +332,9 @@ All fixes are in the simulator and the devkit; competitors change nothing.
   drives, laps count on the generated checkpoints, wall hits count, lap times match the sim's
   timer, a result JSON and a bag are written. Fixed on the way: spawn pose must be applied to the
   rigidbody too; the probe must wait for last_lap_time to change (it lags lap_count by a message).
-- Repos pushed: github.com/Pranman1/feb-racing (main) and github.com/Pranman1/feb-sim (feb).
-  Site live at https://pranman1.github.io/feb-racing/. Devkit image built by Actions
-  (ghcr.io/pranman1/feb-devkit, still private until flipped in the package settings).
+- Repos pushed: github.com/FEBAutonomous/feb-racing (main) and github.com/FEBAutonomous/feb-sim (feb).
+  Site live at https://febautonomous.github.io/feb-racing/. Devkit image built by Actions
+  (ghcr.io/febautonomous/feb-devkit, still private until flipped in the package settings).
 - Two-car head-to-head verified: two starter-driver containers, our proxy (`febrace/proxy.py`),
   simulator with `--cars 2`; both cars finished warm-up + 2 laps with no contact, positions by
   finish time. Two lessons: the official Race Control Tower freezes both cars after any contact
@@ -228,7 +342,7 @@ All fixes are in the simulator and the devkit; competitors change nothing.
   and containers on one Docker network discover each other's ROS topics, so every container now
   runs with ROS_LOCALHOST_ONLY=1.
 - Windows player builds after dropping the NVIDIA (DLSS) module. All three players rebuilt from
-  the final code and published: https://github.com/Pranman1/feb-racing/releases/tag/v0.1.0
+  the final code and published: https://github.com/FEBAutonomous/feb-racing/releases/tag/v0.1.0
   (`feb-sim setup` downloads from there).
 - Still needs a reboot of the PC: any windowed simulator run (NVIDIA driver/library mismatch:
   `nvidia-smi` fails, GLX context creation fails). Headless runs are unaffected. After the reboot,
@@ -262,9 +376,9 @@ All fixes are in the simulator and the devkit; competitors change nothing.
 2. GitHub: `gh auth login`, then
    `gh repo create feb-racing --public --source . --push` (in feb-racing) and
    `gh repo fork AutoDRIVE-Ecosystem/AutoDRIVE --clone=false --fork-name feb-sim`,
-   `git -C ../feb-sim remote add fork git@github.com:Pranman1/feb-sim.git && git -C ../feb-sim push -u fork feb`.
+   `git -C ../feb-sim remote add fork git@github.com:FEBAutonomous/feb-sim.git && git -C ../feb-sim push -u fork feb`.
    Enable Pages (Settings -> Pages -> Source: GitHub Actions). The devkit image then builds to
-   `ghcr.io/pranman1/feb-devkit` (make the package public once).
+   `ghcr.io/febautonomous/feb-devkit` (make the package public once).
 3. Upload the three player archives to a GitHub release of feb-racing (`docs/build.md`).
 
 **Not yet exercised end to end** (needs the build): lap counting on generated checkpoints, the

@@ -28,7 +28,7 @@ walls: {diameter: 0.33}
 EOF
 tools/track_design.py tracks/hairpins/design.yaml     # map.png + resolution/origin into track.yaml
 tools/track_build.py tracks/hairpins                  # track.json + preview.png
-./feb-sim run --track hairpins
+./feb up --track hairpins
 ```
 
 The corridor is a smooth closed spline through the waypoints (any number, any shape, no

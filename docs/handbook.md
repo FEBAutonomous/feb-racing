@@ -1,6 +1,6 @@
 # FEBAUTO Racing handbook
 
-One document for both roles. Printable manuals: `docs/manual/competitor.pdf` (the full competitor manual: platform, rules, learning path), the three setup manuals `docs/manual/competitor_setup_{mac,windows,linux}.pdf` (install to first autonomous lap, one system each) and `docs/manual/organiser.pdf` (LaTeX source alongside). Detail pages: `lab-ros-onboarding.md` (the ROS 2 onboarding lab), `starter-kit.md`, `tracks.md`, `competition.md`,
+One document for both roles. Start with `quickstart.md`. Printable manuals: the three setup manuals `docs/manual/competitor_setup_{mac,windows,linux}.pdf` (install to first autonomous lap, one system each) and `docs/manual/organiser.pdf` (LaTeX source alongside). Detail pages: `lab-ros-onboarding.md` (the ROS 2 onboarding lab), `starter-kit.md`, `tracks.md`, `competition.md`,
 `head-to-head.md`, `semester.md`, `build.md`, `unity-licence.md`.
 
 ## What the pieces are
@@ -11,46 +11,47 @@ One document for both roles. Printable manuals: `docs/manual/competitor.pdf` (th
 | Devkit container | ROS 2 Humble + the AutoDRIVE bridge; turns the WebSocket into ROS 2 topics and back; also hosts the member's code | members' code runs inside it |
 | `stack/` | The member's ROS 2 packages, mounted into the container and built on start | members |
 | `tracks/` | Public tracks: PNG + YAML in, `track.json` out; shipped inside the app | organiser adds, members use |
-| `feb-sim` | The member launcher: setup, run, practice, submit | members |
+| `feb` | The member launcher: setup, up, shell, code, practice, submit, reset, update | members |
 | `feb-race` | The organiser harness: events, nightly reruns, verification, head-to-head brackets | organiser |
 | `results/`, `events/`, `submissions.yaml` | Data behind the leaderboard site | harness writes, members' pull requests add |
-| Site | https://pranman1.github.io/feb-racing/ built by GitHub Actions on every push | read-only |
+| Site | https://febautonomous.github.io/feb-racing/ built by GitHub Actions on every push | read-only |
 
 Data flow while driving:
 
 ```
-lidar, imu, encoders, camera, lap/collision counts  -->  bridge  -->  /autodrive/roboracer_1/*  -->  your node
-your node  -->  /autodrive/roboracer_1/steering_command, throttle_command  -->  bridge  -->  simulator
+simulator  -->  bridge  -->  /autodrive/roboracer_1/*  -->  sim adapter  -->  /scan /odom /imu /camera/color/image_raw  -->  your node
+your node  -->  /drive  -->  supervisor  -->  /ackermann_cmd  -->  sim adapter  -->  bridge  -->  simulator
 ```
 
-The car takes exactly two inputs: steering in [-1, 1] (full left to full right, ±0.5236 rad)
-and throttle in [-1, 1] (0 is a hard brake). Everything else is a sensor.
+On the real car the VESC and lidar drivers replace the bridge and the adapter; everything from
+your node outward is identical. The car takes one input, `/drive`: a speed in m/s and a steering
+angle in rad (±0.5236). Everything else is a sensor. `docs/devkit.md` has the full picture.
 
 ## Competitor: from zero to a leaderboard entry
 
 1. **Install** (once). Docker Desktop (Mac/Windows) or `docker.io` (Linux), Python 3, the GitHub CLI,
    and [Foxglove](https://foxglove.dev/download) (sign in once; it is the data viewer).
    ```bash
-   git clone https://github.com/Pranman1/feb-racing && cd feb-racing
-   ./feb-sim setup --team "Your Team"     # pulls the devkit image, downloads the app for your OS
-   ./feb-sim run                          # manual driving: arrow keys; menu top-left
+   git clone https://github.com/FEBAutonomous/feb-racing && cd feb-racing
+   ./feb setup --name "Your Name"     # pulls the devkit image, downloads the app for your OS
+   ./feb up                          # manual driving: arrow keys; menu top-left
    ```
 2. **Get code.** `cp -r starter_kit/feb_driver stack/`. The whole driver is
    `stack/feb_driver/feb_driver/reactive_driver.py` (140 lines). Its tuning knobs are
    `stack/feb_driver/config/driver.yaml`. `stack/` is yours: add packages, nodes, files.
-3. **Run it.** `./feb-sim run --stack "ros2 launch feb_driver drive.launch.py"`. The launcher
+3. **Run it.** `./feb up --driver feb_driver`. The launcher
    starts the container (which builds your packages), then the simulator, connected. Edit,
-   rerun. `./feb-sim shell` gives a ROS 2 shell in the container (`ros2 topic echo`, `rqt`).
+   rerun. `./feb shell` gives a ROS 2 shell in the container (`ros2 topic echo`, `rqt`).
    Options: `--track porto`, `--noise 1`, `--lidar-hz 10`, `--opponent normal`, `--camera Trackcam`.
    With the [Foxglove](https://foxglove.dev/download) app installed (sign in once), `run` also opens
    it on your car's topics (`ws://localhost:8765`, the devkit's `foxglove_bridge`); `--no-foxglove` skips that.
    In the app: the menu's "Track" and "Cars" buttons cycle tracks and put more cars on the grid;
    "Look" switches between the dressed scene and the bare one (`--look simple` for weak laptops).
-   Later: `./feb-sim update` pulls the repo (new tracks show up in the Track button at once),
+   Later: `./feb update` pulls the repo (new tracks show up in the Track button at once),
    the newer devkit image and, when the organiser released one, the newer app.
-4. **Score yourself.** `./feb-sim practice --stack "..."`: warm-up plus 10 timed laps, 10 s per
+4. **Score yourself.** `./feb practice --stack "..."`: warm-up plus 10 timed laps, 10 s per
    collision, DNF after 300 s. The result and a bag land in `runs/<id>/`.
-5. **Post it.** `./feb-sim submit`: opens a pull request with the result file; a check validates
+5. **Post it.** `./feb submit`: opens a pull request with the result file; a check validates
    it and merges; you appear on that track's practice board as *unverified* until the organiser
    reruns your image.
 6. **Enter competitions.** Build your image and register it:
@@ -61,7 +62,7 @@ and throttle in [-1, 1] (0 is a hard brake). Everything else is a sensor.
    Add your team, GitHub logins and image to `submissions.yaml` in a pull request. Competitions
    and nightly reruns pull that image; the entrypoint starts your stack automatically.
 
-To qualify for the first competition: a verified practice run of 10 laps with at most 1 collision
+To qualify for the first competition: a verified practice run of 10 laps with no collisions
 on every practice track (the Teams page shows your ticks). The final is head-to-head, two cars per
 race, for the top qualification seeds.
 
@@ -91,8 +92,8 @@ and flags the result. Everything must start from the container's entrypoint, not
    track and posts verified results; `./feb-race verify <result.json>` checks one self-reported
    entry. Put nightly in cron and push `results/` afterwards.
 6. **Site and images.** Nothing to do: pushes to `main` rebuild the site and, when `devkit/`
-   changes, the devkit image (`ghcr.io/pranman1/feb-devkit`) and its `gui` tag, the one with a
-   desktop in the browser for rviz2, rqt and turtlesim (`feb-sim ros --gui`, see
+   changes, the devkit image (`ghcr.io/febautonomous/feb-devkit`) and its `gui` tag, the one with a
+   desktop in the browser for rviz2, rqt and turtlesim (`feb shell --gui`, see
    `docs/devkit.md`).
 
 ## Where things are on the organiser PC
@@ -107,8 +108,8 @@ and flags the result. Everything must start from the container's entrypoint, not
 
 ## Frequently hit
 
-- *Port 4567 in use*: another bridge container is running (`docker ps`; `./feb-sim stop`).
-- *Car does not move*: the stack did not start (`./feb-sim shell`, `ros2 node list`), or the
+- *Port 4567 in use*: another bridge container is running (`docker ps`; `./feb stop`).
+- *Car does not move*: the stack did not start (`./feb shell`, `ros2 node list`), or the
   mode is Manual (the launcher picks Autonomous whenever `--stack` is given; the menu button toggles it).
 - *Simulated time*: physics can only fall behind the wall clock, never jump. Stamps and `/clock` are
   simulated time, the starter kit uses `use_sim_time`, results record `real_time_factor` (HUD: RTF).

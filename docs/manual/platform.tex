@@ -19,10 +19,10 @@ league too.
 Piece & What it does & Who touches it\\
 \midrule
 FEB Simulator & Native app (Mac, Windows, Linux). Simulates the car on a track folder and talks to a bridge over a WebSocket on port 4567. & Everyone runs it, nobody edits it\\
-Devkit container & Docker image \file{ghcr.io/pranman1/feb-devkit}: ROS~2 Humble plus the AutoDRIVE bridge that turns the WebSocket into ROS~2 topics. The member's code runs inside it. & Members' code runs inside it\\
+Devkit container & Docker image \file{ghcr.io/febautonomous/feb-devkit}: ROS~2 Humble plus the AutoDRIVE bridge that turns the WebSocket into ROS~2 topics. The member's code runs inside it. & Members' code runs inside it\\
 \file{stack/} & The member's ROS~2 packages. Mounted into the container and built on every start. & Members\\
 \file{tracks/} & Public tracks. PNG and YAML in, \file{track.json} out. Shipped inside the app. & Organiser adds, members use\\
-\file{feb-sim} & The member launcher: setup, run, practice, submit, shell, stop. & Members\\
+\file{feb} & The member launcher: setup, up, shell, code, practice, submit, reset, update. & Members\\
 \file{feb-race} & The organiser harness: events, nightly reruns, verification, head-to-head brackets. & Organiser\\
 \file{results/}, \file{events/}, \file{submissions.yaml} & The data behind the leaderboard site. & Harness writes, members' pull requests add\\
 Site & GitHub Pages, rebuilt on every push to \file{main}. & Read-only\\
@@ -32,28 +32,47 @@ Site & GitHub Pages, rebuilt on every push to \file{main}. & Read-only\\
 \subsection{Data flow while driving}
 
 \begin{lstlisting}
-lidar, imu, encoders, camera, lap/collision counts --> bridge --> /autodrive/roboracer_1/* --> your node
-your node --> /autodrive/roboracer_1/steering_command, throttle_command --> bridge --> simulator
+simulator --> bridge --> /autodrive/roboracer_1/* --> sim adapter --> /scan /odom /imu /camera/color/image_raw --> your node
+your node --> /drive --> supervisor --> /ackermann_cmd --> sim adapter --> bridge --> simulator
 \end{lstlisting}
 
-The car takes exactly two inputs and everything else is a sensor:
+On the real car the VESC and lidar drivers stand where the bridge and the adapter are; from
+the node outward nothing changes. The car takes one input and everything else is a sensor:
 
 \begin{itemize}
-  \item \texttt{steering\_command}, \texttt{std\_msgs/Float32} in $[-1, 1]$: full left to full right, $\pm 0.5236$~rad. The actuator lags about 0.25~s and slews at 3.2~rad/s.
-  \item \texttt{throttle\_command}, \texttt{std\_msgs/Float32} in $[-1, 1]$. \textbf{Zero is a hard brake}, not coasting. A car that wants to keep moving must never send zero.
+  \item \texttt{/drive}, \texttt{ackermann\_msgs/AckermannDriveStamped}: \texttt{drive.speed} in m/s and
+  \texttt{drive.steering\_angle} in rad, at most $\pm 0.5236$. The steering actuator lags about
+  0.25~s and slews at 3.2~rad/s. A command older than 0.5~s stops the car. The supervisor clips
+  the speed to the mode's cap; the adapter turns it into the simulator's throttle (feed-forward
+  plus a bounded trim, never the hard-brake zero while speed is wanted).
 \end{itemize}
 
-\subsection{Sensors (namespace \texttt{/autodrive/roboracer\_1/})}
+\subsection{Sensors}
+
+The contract, the real car's topics:
 
 \begin{tabularx}{\linewidth}{p{5.2cm}p{4.3cm}X}
 \toprule
 Topic & Type & Notes\\
 \midrule
-\texttt{lidar} & \texttt{sensor\_msgs/LaserScan} & 1080 beams over 270\textdegree, 0.06 to 10~m, 40~Hz\\
-\texttt{imu} & \texttt{sensor\_msgs/Imu} & orientation, angular velocity, linear acceleration\\
+\texttt{/scan} & \texttt{sensor\_msgs/LaserScan} & 1080 beams over 270\textdegree, 0.06 to 10~m, 40~Hz, frame \texttt{laser}\\
+\texttt{/odom} & \texttt{nav\_msgs/Odometry} & pose and speed dead-reckoned from the wheel encoders and the gyro, as the VESC does it\\
+\texttt{/imu} & \texttt{sensor\_msgs/Imu} & orientation, angular velocity, linear acceleration\\
+\texttt{/camera/color/image\_raw} & \texttt{sensor\_msgs/Image} & forward camera (cone tracks)\\
+\texttt{/feb/state} & \texttt{std\_msgs/String} & the supervisor: IDLE, MANUAL, AUTONOMOUS or STOP, and why\\
+\bottomrule
+\end{tabularx}
+
+\medskip
+The simulator's own topics (namespace \texttt{/autodrive/roboracer\_1/}), for debugging only:
+
+\begin{tabularx}{\linewidth}{p{5.2cm}p{4.3cm}X}
+\toprule
+Topic & Type & Notes\\
+\midrule
+\texttt{lidar}, \texttt{imu}, \texttt{front\_camera} & raw sensors & what the adapter republishes\\
 \texttt{left\_encoder}, \texttt{right\_encoder} & \texttt{sensor\_msgs/JointState} & wheel angle in rad; wheel radius 0.059~m\\
 \texttt{steering}, \texttt{throttle} & \texttt{std\_msgs/Float32} & actuator feedback\\
-\texttt{front\_camera} & \texttt{sensor\_msgs/Image} & forward camera (cone tracks)\\
 \texttt{ips}, \texttt{odom}, \texttt{tf} & pose & ground truth: \textbf{training and debugging only}\\
 \texttt{lap\_count}, \texttt{lap\_time}, \texttt{last\_lap\_time}, \texttt{best\_lap\_time}, \texttt{collision\_count} & counters & scoring: \textbf{training and debugging only}\\
 \texttt{reset\_command} & command & respawn: \textbf{training and debugging only}\\

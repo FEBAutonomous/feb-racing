@@ -49,7 +49,7 @@ are written; two cars is the supported race mode.
 
 ## Practice
 
-Members race the house racer locally: `./feb-sim run --stack "..." --opponent normal`. The house
+Members race the house racer locally: `./feb up --driver my_driver --opponent normal`. The house
 racer is the smooth lidar driver from the starter kit at a conservative pace (`slow` 1.5 m/s,
 `normal` 2.0, `fast` 2.5; zero wall contact over eight laps on the loop at 10 Hz), the thing a new
 stack has to overtake. It runs in follow mode (`follow_gap: 2.0`): a car within 2 m straight ahead

@@ -57,6 +57,12 @@ function table(rows, showVerified) {
       <td class="num">${r.collisions}</td><td class="muted">${esc(r.started_at.slice(0, 10))} <code>${esc(r.id)}</code></td></tr>`).join('') + '</tbody></table></div>';
 }
 
+function overallTable(o) {
+  if (!o.standings.length) return '<p class="muted">No team has finished every track yet.</p>';
+  return `<div class="wrap"><table><thead><tr><th>#</th><th>Team</th><th class="num">Total</th>${o.tracks.map(t => `<th class="num">${esc(t)}</th>`).join('')}</tr></thead><tbody>` +
+    o.standings.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.team)}${verifiedBadge(r)}</td><td class="num">${secs(r.total_s)}</td>${o.tracks.map(t => `<td class="num">${secs(r.tracks[t])}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+}
+
 function races(e) {
   if (!e.races || !e.races.length) return '';
   return '<h3>Races</h3><div class="wrap"><table><thead><tr><th>Race</th><th>Team</th><th class="num">Pos</th><th class="num">Laps</th><th class="num">Finish</th><th class="num">Collisions</th></tr></thead><tbody>' +
@@ -70,8 +76,11 @@ const pages = {
     <h2>Competitions</h2>
     <div class="cards">${d.events.map(e => `<a class="card" href="#/events/${esc(e.id)}"><b>${esc(e.title)}</b><div class="meta">${esc(e.date)} · ${esc(e.mode)} · ${esc(e.track)}</div>
       <span class="badge ${e.status === 'done' ? 'ok' : e.status === 'live' ? 'bad' : 'info'}">${esc(e.status)}</span></a>`).join('') || '<p class="muted">No events scheduled.</p>'}</div>
+    <h2>Overall</h2>
+    <p class="muted">Every qualifying track of a kind, totals summed. <code>./feb practice --driver NAME</code> runs exactly this set; only teams with a finished run on every track appear.</p>
+    ${(d.overall || []).filter(o => o.tracks.length).map(o => `<h3>${esc(o.name)} <span class="muted">${o.tracks.map(esc).join(' + ')}</span></h3>${overallTable(o)}`).join('')}
     <h2>Practice tracks</h2>
-    <p class="muted">Qualify for the first competition with ${d.qualify.laps} laps and at most ${d.qualify.max_collisions} collision on every track below. Progress per team: <a href="#/teams">Teams</a>.</p>
+    <p class="muted">Qualify for the first competition with ${d.qualify.laps} laps and ${d.qualify.max_collisions === 0 ? "no collisions" : "at most " + d.qualify.max_collisions + " collision"} on every track below. Progress per team: <a href="#/teams">Teams</a>.</p>
     ${groups.map(([g, name]) => { const ts = d.tracks.filter(t => (t.category || 'feb') === g).sort((a, b) => (a.difficulty - b.difficulty) || (a.length - b.length)); return ts.length ? `<h3>${name}</h3>
     <div class="cards">${ts.map(t => `<a class="card" href="#/practice/${esc(t.id)}">${t.preview ? `<img src="tracks/${esc(t.id)}.png" alt="">` : ''}<b>${esc(t.name)}</b>${t.qualifying ? '' : '<span class="badge info">showcase</span>'}
       <div class="meta">${t.length} m · ${t.direction} · ${'●'.repeat(t.difficulty || 0)}${'○'.repeat(5 - (t.difficulty || 0))} · ${t.attempts} attempts${t.standings[0] ? ` · best ${secs(t.standings[0].best_lap_s)} s by ${esc(t.standings[0].team)}` : ''}</div></a>`).join('')}</div>` : ''; }).join('')}`,
@@ -85,17 +94,17 @@ const pages = {
     return `<h2>${esc(e.title)} <span class="badge info">${esc(e.status)}</span></h2><p class="muted">${esc(e.date)} · ${esc(e.mode)} · track ${esc(e.track)} · ${e.attempts ?? 1} attempt(s) per team, best counts.<br>
       Rules: ${r.warmup_laps ?? 1} warm-up + ${r.laps ?? 10} timed laps, +${r.collision_penalty_s ?? 10} s per collision, DSQ above ${r.max_collisions ?? 10} collisions, ${r.timeout_s ?? 300} s limit.</p>${table(e.standings, false)}${races(e)}`; },
   '/teams': (d) => `<h2>Teams</h2>
-    <p class="muted">Qualification for the first competition: on every practice track, a verified run of ${d.qualify.laps} laps with at most ${d.qualify.max_collisions} collision. ✓ verified &nbsp; ~ self-reported, awaiting the nightly rerun &nbsp; – not yet.</p>
+    <p class="muted">Qualification for the first competition: on every practice track, a verified run of ${d.qualify.laps} laps with ${d.qualify.max_collisions === 0 ? "no collisions" : "at most " + d.qualify.max_collisions + " collision"}. ✓ verified &nbsp; ~ self-reported, awaiting the nightly rerun &nbsp; – not yet.</p>
     <div class="wrap"><table><thead><tr><th>Team</th><th>Members</th>${d.tracks.filter(t => t.qualifying).map(t => `<th>${esc(t.name)}</th>`).join('')}<th>Image</th></tr></thead><tbody>${d.teams.map(t => `<tr><td>${esc(t.name)}${t.qualified ? '<span class="badge ok">qualified</span>' : ''}</td><td>${(t.members || []).map(esc).join(', ')}</td>${d.tracks.filter(t => t.qualifying).map(tr => `<td>${qualMark((t.qualification || {})[tr.id])}</td>`).join('')}<td><code>${esc(t.image)}</code></td></tr>`).join('')}</tbody></table></div>`,
   '/docs': () => `<h2>How to enter</h2>
     <ol>
-      <li>Clone the repo, run <code>./feb-sim setup</code>, then <code>./feb-sim run</code> to drive manually.</li>
-      <li>Copy <code>starter_kit/feb_driver</code> into <code>stack/</code> and make it drive: <code>./feb-sim run --stack "ros2 launch feb_driver drive.launch.py"</code>.</li>
-      <li>Score yourself: <code>./feb-sim practice --track loop</code>. Post it: <code>./feb-sim submit</code> (opens a pull request).</li>
+      <li>Clone the repo, run <code>./feb setup</code>, then <code>./feb up</code> to drive manually.</li>
+      <li>Copy <code>starter_kit/feb_driver</code> into <code>stack/</code> and make it drive: <code>./feb up --stack "ros2 launch feb_driver drive.launch.py"</code>.</li>
+      <li>Score yourself: <code>./feb practice --driver feb_driver</code> runs every practice track of its kind. Post the finished ones: <code>./feb submit</code> (one pull request).</li>
       <li>Build and push your image (<code>docker build</code> from the FEB devkit), add your team to <code>submissions.yaml</code>. Nightly reruns and competitions use that image.</li>
-      <li>Qualify: complete 10 laps with at most one collision on <em>every</em> practice track (verified by the nightly rerun; the Teams page shows your progress). More practice tracks arrive over the semester. Qualified teams race the qualification time-attack; its top seeds go to the head-to-head final, two cars at a time.</li>
+      <li>Qualify: complete 10 laps with no collisions on <em>every</em> practice track (verified by the nightly rerun; the Teams page shows your progress). More practice tracks arrive over the semester. Qualified teams race the qualification time-attack; its top seeds go to the head-to-head final, two cars at a time.</li>
     </ol>
-    <p>Full guide: <a href="https://github.com/Pranman1/feb-racing/blob/main/docs/handbook.md">docs/handbook.md</a> in the repo.</p>
+    <p>Full guide: <a href="https://github.com/FEBAutonomous/feb-racing/blob/main/docs/handbook.md">docs/handbook.md</a> in the repo.</p>
     <p>Rules follow the RoboRacer Sim Racing League: ground-truth topics (<code>ips</code>, <code>odom</code>, <code>tf</code>, lap/collision counters, <code>reset_command</code>) are for training and debugging only, never at race time; 10 s per collision.</p>`,
 };
 

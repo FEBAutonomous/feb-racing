@@ -1,0 +1,840 @@
+#!/usr/bin/env python3
+"""feb: your box (a persistent ROS 2 container), the simulator app and Foxglove, from one command.
+
+    ./feb setup --name "Your Name"     once: Docker check, image, simulator app, the box
+    ./feb up                           house nodes in the box + simulator + Foxglove, drive by hand
+    ./feb up --track loop --stack "ros2 launch feb_driver drive.launch.py"
+    ./feb up --stack "..." --opponent normal     race the house racer (slow | normal | fast | map)
+    ./feb shell                        a terminal in the box (ROS sourced; open as many as you like)
+    ./feb shell --gui                  ...and the box's desktop in your browser (rviz2, rqt, turtlesim)
+    ./feb code                         VS Code attached to the box
+    ./feb stop                         end `feb up` (the box stays)
+    ./feb reset                        wipe the box; the next command makes a fresh one
+    ./feb update                       git pull, newer image, newer simulator app
+    ./feb practice --driver NAME       scored runs on the driver's practice set (its kind's tracks)
+    ./feb submit                       post the clean runs to the scoreboard and the driver's code to feb-stack
+
+The box mounts the folder that holds this clone (your FEB folder) at /home/feb/FEB and keeps
+everything you install until `feb reset`. The simulator is a native app for your OS; it connects
+to the box on port 4567. `run` is an alias of `up`.
+
+Environment overrides: FEB_SIM_APP, FEB_DEVKIT_IMAGE, FEB_DEVKIT_GUI_IMAGE, FEB_BOX_NAME,
+FEB_DEVKIT_PORT, FEB_FOXGLOVE_PORT, FEB_VNC_PORT.
+"""
+import argparse
+import json
+import os
+import pathlib
+import platform
+import shutil
+import socket
+import subprocess
+import sys
+import time
+
+sys.stdout.reconfigure(line_buffering=True)        # progress lines arrive in order, also when piped to a file
+import signal
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))   # a kill still runs the cleanup in `feb up`
+ROOT = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+from febrace import sim  # noqa: E402
+
+FEB_DIR = ROOT.parent                                  # the folder that holds this clone and your other repos
+FEB_IN = "/home/feb/FEB"                               # ...as the box sees it
+ROOT_IN = f"{FEB_IN}/{ROOT.name}"
+TRACKS = ROOT / "tracks"
+STACK = ROOT / "stack"
+STACK_IN = f"{ROOT_IN}/stack"
+TEAM_STACK = pathlib.Path(os.environ.get("FEB_STACK_DIR", FEB_DIR / "feb-stack"))   # the team's driver repo, cloned beside this one
+STACK_REPO = os.environ.get("FEB_STACK_REPO", "FEBAutonomous/feb-stack")
+RESULTS_REPO = "FEBAutonomous/feb-racing"
+CONFIG = pathlib.Path.home() / ".feb-sim" / "config.json"
+IMAGE = os.environ.get("FEB_DEVKIT_IMAGE", "ghcr.io/febautonomous/feb-devkit:latest")       # league/practice containers
+GUI_IMAGE = os.environ.get("FEB_DEVKIT_GUI_IMAGE", IMAGE.rsplit(":", 1)[0] + ":gui")   # the box (devkit + desktop)
+BOX = os.environ.get("FEB_BOX_NAME", "feb-box")       # override to run several boxes side by side
+OPPONENT = BOX + "-opponent"
+PROXY = BOX + "-proxy"
+PORT = int(os.environ.get("FEB_DEVKIT_PORT", 4567))   # override when another bridge holds 4567 on this machine
+OPPONENT_PORT = PORT - 1
+PROXY_PORT = PORT - 2
+FOXGLOVE_PORT = int(os.environ.get("FEB_FOXGLOVE_PORT", 8765))   # foxglove_bridge inside the box
+VNC_PORT = int(os.environ.get("FEB_VNC_PORT", 6080))             # the box's web desktop
+APPS = {                                  # --apps shorthands; anything else is run as given
+    "rviz": "rviz2 -d /home/autodrive_devkit/rviz/default.rviz",
+    "turtlesim": "ros2 run turtlesim turtlesim_node",
+    "rqt": "rqt",
+}
+OPPONENT_SPEED = {"slow": 1.5, "normal": 2.0, "fast": 2.5}   # the lidar house racer's max_speed
+MAP_OPPONENT_SPEED = 2.5                                      # --opponent map: the map-following driver
+ON_CAR = os.environ.get("FEB_CAR") == "1" or pathlib.Path("/dev/sensors").exists()   # the Jetson: devices go into the box
+RELEASES = "https://github.com/FEBAutonomous/feb-racing/releases/latest/download"
+
+
+def default_ws():
+    """Where drivers are built from: the team repo on the car (it holds every merged driver),
+    your own stack/ on a laptop. --ws overrides either."""
+    return TEAM_STACK if ON_CAR and TEAM_STACK.is_dir() else STACK
+RELEASES_API = "https://api.github.com/repos/FEBAutonomous/feb-racing/releases/latest"
+
+
+def fail(msg):
+    sys.exit(f"feb: {msg}")
+
+
+def docker(*args, **kw):
+    kw.setdefault("capture_output", True)
+    kw.setdefault("text", True)
+    return subprocess.run(["docker", *args], **kw)
+
+
+# ------------------------------------------------------------------ simulator app
+
+def app_executable():
+    return sim.executable()
+
+
+
+def cmd_setup(args):
+    if args.team:
+        CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG.write_text(json.dumps({"team": args.team}))
+        print(f"results will be listed as '{args.team}'")
+    if not shutil.which("docker"):
+        fail("Docker is not installed. Install Docker Desktop (Mac/Windows) or docker.io (Linux) first.")
+    subprocess.run(["docker", "pull", GUI_IMAGE], check=True)
+    if app_executable():
+        print(f"simulator app present: {app_executable()}")
+    else:
+        install_app()
+    check_foxglove()
+    ensure_box()
+    write_attach_config()
+    print(f"\nready. `./feb shell` for a terminal in the box, `./feb code` for VS Code in it, `./feb up` to race.")
+
+
+def cmd_update(_):
+    """Bring everything up to date: the repo (tracks, launcher, docs), the images, the app. A new
+    image means a new box (your installs go, your files stay)."""
+    if (ROOT / ".git").exists():
+        subprocess.run(["git", "-C", str(ROOT), "pull", "--ff-only"], check=False)
+    before = image_id(GUI_IMAGE)
+    subprocess.run(["docker", "pull", GUI_IMAGE], check=False)
+    subprocess.run(["docker", "pull", IMAGE], check=False)
+    if box_state() and image_id(GUI_IMAGE) != box_image_id():
+        print("the image changed: replacing the box (anything you apt/pip installed in it is gone; your files are not)")
+        docker("rm", "-f", BOX)
+    latest = latest_release_stamp()
+    if latest is None:
+        print("could not reach GitHub to check the app; kept the installed one")
+    elif latest == installed_release_stamp():
+        print(f"simulator app is current ({latest})")
+    else:
+        install_app(latest)
+
+
+STAMP = sim.APP_DIR / "release.json"      # which release asset the installed app came from
+
+
+def installed_release_stamp():
+    try:
+        return json.loads(STAMP.read_text())["updated_at"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def latest_release_stamp(timeout=4):
+    """The updated_at of this platform's archive in the latest release, or None offline."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(RELEASES_API, timeout=timeout) as r:
+            release = json.load(r)
+        return next(a["updated_at"] for a in release["assets"] if a["name"] == sim.archive_name())
+    except Exception:
+        return None
+
+
+def install_app(stamp=None):
+    import tarfile
+    import urllib.request
+    import zipfile
+    name = sim.archive_name()
+    dest = sim.platform_dir()
+    if dest.is_symlink():
+        dest.unlink()        # the organiser PC links the app to the build folder; do not write through it
+    elif dest.exists():
+        shutil.rmtree(dest)  # replace the old install wholesale: builds add and remove files
+    dest.mkdir(parents=True)
+    archive = sim.APP_DIR / name
+    print(f"downloading {RELEASES}/{name} ...")
+    urllib.request.urlretrieve(f"{RELEASES}/{name}", archive)
+    if name.endswith(".zip"):
+        if shutil.which("unzip"):    # keeps permissions and symlinks inside the Mac app bundle
+            subprocess.run(["unzip", "-q", str(archive), "-d", str(dest)], check=True)
+        else:
+            zipfile.ZipFile(archive).extractall(dest)
+    else:
+        tarfile.open(archive).extractall(dest)
+    archive.unlink()
+    exe = app_executable()
+    if exe is None:
+        fail(f"unpacked the app but did not find the executable under {sim.APP_DIR}")
+    exe.chmod(0o755)
+    STAMP.write_text(json.dumps({"updated_at": stamp or latest_release_stamp() or ""}))
+    print(f"simulator app installed: {exe}")
+
+
+def app_update_hint():
+    """One line if a newer app is on the release page; silent offline (a 2 s budget)."""
+    latest = latest_release_stamp(timeout=2)
+    installed = installed_release_stamp()
+    if latest and installed and latest != installed:
+        print("a newer simulator app is available: ./feb update")
+
+
+def check_foxglove():
+    """Foxglove is how members look at their car's data (lidar, camera, plots). It is a separate
+    desktop app with its own installer per OS and a one-time sign-in, so setup only points at it."""
+    if foxglove_app():
+        print(f"Foxglove app present: {foxglove_app()}")
+        return
+    print("Foxglove app not found. Install it from https://foxglove.dev/download and sign in once")
+    print("(free account); `feb up` then opens it on your car's topics. Optional but recommended.")
+    import webbrowser
+    webbrowser.open("https://foxglove.dev/download")
+
+
+
+# ------------------------------------------------------------------ the box
+
+def box_state():
+    """'running', 'stopped' or None."""
+    out = docker("inspect", "--format", "{{.State.Running}}", BOX)
+    if out.returncode != 0:
+        return None
+    return "running" if out.stdout.strip() == "true" else "stopped"
+
+
+def box_image_id():
+    return docker("inspect", "--format", "{{.Image}}", BOX).stdout.strip()
+
+
+def image_id(image):
+    return docker("image", "inspect", "--format", "{{.Id}}", image).stdout.strip()
+
+
+def ensure_box():
+    """The box: a persistent container from the gui image, your FEB folder mounted, the web
+    desktop running, nothing else. Created once, started when stopped, reused forever."""
+    state = box_state()
+    if state == "running":
+        return
+    if state == "stopped":
+        docker("start", BOX)
+        return
+    if FEB_DIR == pathlib.Path.home() or FEB_DIR == FEB_DIR.anchor:
+        fail(f"this clone sits directly in {FEB_DIR}, and the box would mount all of it. Give it a folder of its own:\n"
+             f"    mkdir ~/FEB && mv {ROOT} ~/FEB/   then run feb from there")
+    if not image_id(GUI_IMAGE):
+        print(f"pulling {GUI_IMAGE} (once; a few GB) ...")
+        subprocess.run(["docker", "pull", GUI_IMAGE], check=True)
+    print(f"creating the box ({BOX}) from {GUI_IMAGE}, your folder {FEB_DIR} mounted at {FEB_IN}")
+    cmd = ["docker", "run", "-d", "--init", "--name", BOX, "--hostname", "feb-box", "--restart", "unless-stopped",   # --init reaps what the launches leave behind
+           "--entrypoint", "/home/autodrive_devkit/box.sh",
+           "-p", f"{PORT}:4567", "-p", f"{FOXGLOVE_PORT}:8765", "-p", f"{VNC_PORT}:6080",
+           "-e", "ROS_LOCALHOST_ONLY=1", "-e", "DISPLAY=:1", "-e", "LIBGL_ALWAYS_SOFTWARE=1", "-e", "QT_X11_NO_MITSHM=1",
+           "-e", f"FEB_WS={STACK_IN}", "-e", f"FEB_ROOT={ROOT_IN}",
+           "-v", f"{FEB_DIR}:{FEB_IN}", "--user", "feb", "-w", ROOT_IN,
+           "--label", "feb.box=1"]
+    if ON_CAR:     # the VESC, the lidar and the gamepad: the whole of /dev, as the RoboRacer guide's container does
+        cmd += ["--privileged", "-v", "/dev:/dev", "-e", "FEB_CAR=1"]
+    cmd.append(GUI_IMAGE)
+    if subprocess.run(cmd, stdout=subprocess.DEVNULL).returncode != 0:
+        fail("docker run failed (see above)")
+    if platform.system() == "Linux" and (os.getuid(), os.getgid()) != (1000, 1000):
+        # the image's user is uid 1000; make it yours so files you create are yours
+        docker("exec", "-u", "root", BOX, "bash", "-c",
+               f"groupmod -g {os.getgid()} feb 2>/dev/null || groupmod -o -g {os.getgid()} feb; "
+               f"usermod -o -u {os.getuid()} -g {os.getgid()} feb; chown -R feb:feb /home/feb")
+    docker("exec", BOX, "mkdir", "-p", STACK_IN)
+
+
+def in_box(path):
+    """A laptop path under the FEB folder, as the box sees it."""
+    p = pathlib.Path(path).resolve()
+    try:
+        return f"{FEB_IN}/{p.relative_to(FEB_DIR).as_posix()}"
+    except ValueError:
+        fail(f"{p} is outside your FEB folder ({FEB_DIR}); the box only sees that folder")
+
+
+def exec_tty(*args, user="feb", workdir=None):
+    """Run something in the box attached to this terminal."""
+    tty = ["-it"] if sys.stdin.isatty() else ["-i"]
+    cmd = ["docker", "exec", *tty, "-u", user] + (["-w", workdir] if workdir else []) + [BOX, *args]
+    return subprocess.run(cmd).returncode
+
+
+def bridge_up():
+    """Is the bridge listening inside the box? (The published port answers even before it does.)"""
+    out = docker("exec", BOX, "ss", "-ltn")
+    return ":4567 " in out.stdout.replace("\n", " ")
+
+
+def cmd_shell(args):
+    ensure_box()
+    if getattr(args, "gui", False):
+        open_desktop()
+    for name in (getattr(args, "apps", "") or "").replace(",", " ").split():
+        docker("exec", "-d", "-u", "feb", BOX, "bash", "-ic", APPS.get(name, name))
+    here = pathlib.Path.cwd()
+    workdir = in_box(here) if FEB_DIR in here.parents or here == FEB_DIR else ROOT_IN
+    if getattr(args, "command", None):
+        sys.exit(exec_tty("bash", "-ic", args.command, workdir=workdir))
+    print(f"box: {BOX}, your FEB folder at {FEB_IN}; ros2 and colcon work here; exit to leave, the box keeps running")
+    sys.exit(exec_tty("bash", workdir=workdir))
+
+
+def open_desktop():
+    url = f"http://localhost:{VNC_PORT}/vnc.html?autoconnect=1&resize=scale"
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        with socket.socket() as s:
+            s.settimeout(0.5)
+            if s.connect_ex(("127.0.0.1", VNC_PORT)) == 0:
+                break
+        time.sleep(1)
+    print(f"desktop: {url}")
+    import webbrowser
+    webbrowser.open(url)
+
+
+def cmd_stop(_=None):
+    docker("rm", "-f", OPPONENT, PROXY)
+    if box_state() == "running":
+        docker("exec", BOX, "feb-up", "--stop")
+    print("stopped")
+
+
+def cmd_reset(_):
+    docker("rm", "-f", BOX, OPPONENT, PROXY)
+    print(f"box removed; the next feb command makes a fresh one. Your files in {FEB_DIR} are untouched")
+
+
+def cmd_logs(args):
+    if box_state() != "running":
+        fail("the box is not running; feb up or feb shell first")
+    os.execvp("docker", ["docker", "exec", BOX, "tail", "-n", str(args.tail)] + (["-f"] if args.follow else []) + ["/tmp/feb-up.log"])
+
+
+def cmd_code(args):
+    """The editor attached to the box: VS Code (or Cursor with --cursor) opens ROOT inside it."""
+    ensure_box()
+    write_attach_config()
+    editor = "cursor" if args.cursor else "code"
+    if not shutil.which(editor):
+        fail(f"{editor} is not on the PATH. In VS Code: Remote Explorer -> Dev Containers -> {BOX} -> Attach, folder {ROOT_IN}")
+    uri = f"vscode-remote://attached-container+{BOX.encode().hex()}{ROOT_IN}"
+    subprocess.Popen([editor, "--folder-uri", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"{editor} attached to {BOX} at {ROOT_IN}")
+
+
+def write_attach_config():
+    """VS Code's per-container settings for attaching: the folder to open and the extensions."""
+    system = platform.system()
+    base = {"Darwin": pathlib.Path.home() / "Library" / "Application Support",
+            "Windows": pathlib.Path(os.environ.get("APPDATA", pathlib.Path.home()))}.get(system, pathlib.Path.home() / ".config")
+    cfg = {"workspaceFolder": ROOT_IN, "remoteUser": "feb", "extensions": ["ms-python.python", "ms-iot.vscode-ros"]}
+    for app in ("Code", "Cursor"):
+        d = base / app / "User" / "globalStorage" / "ms-vscode-remote.remote-containers" / "nameConfigs"
+        if (base / app).exists():
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f"{BOX}.json").write_text(json.dumps(cfg, indent=2))
+
+
+# ------------------------------------------------------------------ up: house nodes + simulator + Foxglove
+
+def resolve_track(name):
+    """A track folder in ./tracks, an explicit folder, or a name the app knows."""
+    for candidate in (pathlib.Path(name), TRACKS / name):
+        if (candidate / "track.json").exists():
+            return str(candidate.resolve())
+    return name
+
+
+def read_manifest(ws, name):
+    """A driver package's driver.yaml: what it is for and how to start it in each mode.
+
+        name: feb_driver
+        kind: walls            # walls | cones | any
+        modes:
+          trackdrive: {launch: drive.launch.py, max_speed: 2.5}
+          inspection: {launch: drive.launch.py, max_speed: 0.8}
+        default_mode: trackdrive
+    """
+    import yaml
+    for candidate in pathlib.Path(ws).rglob("driver.yaml"):
+        m = yaml.safe_load(candidate.read_text()) or {}
+        if m.get("name") == name:
+            return m, candidate.parent
+    fail(f"no driver.yaml with name '{name}' under {ws}")
+
+
+def driver_command(args):
+    """--driver NAME [--mode M] -> the stack command and the speed cap from its manifest."""
+    ws = pathlib.Path(args.ws) if args.ws else default_ws()
+    manifest, folder = read_manifest(ws, args.driver)
+    modes = manifest.get("modes") or {}
+    mode = args.mode_name or manifest.get("default_mode") or (next(iter(modes)) if modes else None)
+    if mode not in modes:
+        fail(f"driver {args.driver} has no mode '{mode}'; it has: {', '.join(modes) or 'none'}")
+    m = modes[mode]
+    launch = m.get("launch", "drive.launch.py")
+    extra = " ".join(f"{k}:={v}" for k, v in (m.get("args") or {}).items())
+    stack = f"ros2 launch {args.driver} {launch} mode:={mode} {extra}".strip()
+    print(f"driver {args.driver} ({manifest.get('kind', 'any')}), mode {mode}: {stack}")
+    args.adapter = ",".join(f"{k}={v}" for k, v in (manifest.get("adapter") or {}).items())   # sim adapter settings the driver asks for
+    return stack, m.get("max_speed")
+
+
+def cmd_up(args):
+    if args.driver:
+        args.stack, cap = driver_command(args)
+        if args.max_speed is None and cap is not None:
+            args.max_speed = float(cap)
+    exe = app_executable()
+    if exe is None and not args.no_sim:
+        fail("simulator app not found; run `feb setup` or set FEB_SIM_APP")
+    ensure_box()
+    if not args.no_sim:
+        app_update_hint()
+    ws = in_box(args.ws) if args.ws else in_box(default_ws())
+    track = resolve_track(args.track)
+    up = ["docker", "exec", "-u", "feb", BOX, "feb-up", "--ws", ws]
+    if args.stack:
+        up += ["--stack", args.stack]
+    if args.noise:
+        up += ["--noise", args.noise]
+    if getattr(args, "adapter", ""):
+        up += ["--adapter", args.adapter]
+    if args.no_foxglove:
+        up += ["--no-foxglove"]
+    if args.car:
+        up += ["--car"]
+    if args.deadman and not args.car:
+        up += ["--deadman", "--quiet"]       # the terminal becomes the gamepad; output goes to feb logs
+    if args.max_speed is not None:
+        up += ["--max-speed", str(args.max_speed)]
+    print(f"starting the house nodes in {BOX} (workspace {ws}) ...")
+    house = subprocess.Popen(up)
+    sim_proc = None
+    try:
+        if not args.no_sim and not args.car:
+            deadline = time.time() + 900                 # a first C++ build on a slow laptop takes that long
+            while time.time() < deadline and house.poll() is None and not bridge_up():
+                time.sleep(1)
+            if house.poll() is not None:
+                fail("the house nodes stopped before the bridge opened; see above or `feb logs`")
+            if not bridge_up():
+                fail("the bridge did not open port %d within 15 min (`feb logs`)" % PORT)
+            sim_proc = start_sim(exe, args, track)
+            if not args.headless and not args.no_foxglove:
+                time.sleep(4)          # let the window come up first, so Foxglove lands on top
+                open_foxglove()
+        elif not args.no_foxglove and not args.headless:
+            open_foxglove()
+        if args.deadman and not args.car and house.poll() is None:
+            print("the car's rules: nothing drives until a dead-man is held. This terminal is the gamepad; `feb logs -f` elsewhere shows the nodes.")
+            time.sleep(2)
+            exec_tty("bash", "-ic", "ros2 run feb_tools key_joy")      # returns on Q
+        else:
+            while house.poll() is None and (sim_proc is None or sim_proc.poll() is None):
+                time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if sim_proc and sim_proc.poll() is None:
+            sim_proc.terminate()
+        docker("exec", BOX, "feb-up", "--stop")
+        docker("rm", "-f", OPPONENT, PROXY)
+        try:
+            house.wait(15)
+        except subprocess.TimeoutExpired:
+            house.kill()
+
+
+def start_sim(exe, args, track):
+    mode = args.mode or ("autonomous" if args.stack else "manual")
+    cars, port = args.cars, PORT
+    if args.opponent:
+        if not args.stack:
+            fail("--opponent races your stack, so it needs --stack \"ros2 launch ...\" as well")
+        if not pathlib.Path(track).is_dir():
+            fail("--opponent needs a track folder with track.json (a name from ./tracks or a path)")
+        if json.loads((pathlib.Path(track) / "track.json").read_text()).get("max_cars", 4) < 2:
+            fail(f"{pathlib.Path(track).name} is a single-car track (too narrow to race side by side)")
+        start_opponent(args.opponent, track)
+        cars, port = max(cars, 2), PROXY_PORT
+    cmd = [str(exe), "--track", track, "--tracks", str(TRACKS), "--connect", f"127.0.0.1:{port}",
+           "--mode", mode, "--cars", str(cars)]
+    if args.lidar_hz:
+        cmd += ["--lidar-hz", str(args.lidar_hz)]
+    if args.camera:
+        cmd += ["--camera", args.camera]
+    if args.look or args.headless:
+        cmd += ["--look", "simple" if args.headless else args.look]   # nothing to see headless
+    if args.fps is not None:
+        cmd += ["--fps", str(args.fps)]
+    if args.camera_hz is not None:
+        cmd += ["--camera-hz", str(args.camera_hz)]
+    if args.headless:
+        cmd += ["-batchmode", "-nographics"]
+    print("starting simulator:", " ".join(cmd[1:]))
+    return subprocess.Popen(cmd)
+
+
+def start_opponent(level, track):
+    """The house racer in its own container, plus the proxy that feeds car 2 to it. Default: the
+    smooth lidar driver from the starter kit at a conservative pace (the thing to overtake);
+    "map" runs the map-following driver instead."""
+    subprocess.run(["docker", "rm", "-f", OPPONENT, PROXY], capture_output=True)
+    if not json.loads((pathlib.Path(track) / "track.json").read_text()).get("walls"):
+        level = "map"   # no walls to follow: the lidar racer would wander; the map follower knows the lane
+    if level == "map":
+        launch = f"ros2 run feb_tools house_driver --ros-args -p track:=/track -p max_speed:={MAP_OPPONENT_SPEED} -p use_sim_time:=true"
+        speed = MAP_OPPONENT_SPEED
+    else:
+        speed = OPPONENT_SPEED[level]
+        launch = f"ros2 run feb_driver reactive_driver --ros-args -p max_speed:={speed} -p bubble:=0.45 -p follow_gap:=2.0 -p use_sim_time:=true"
+    subprocess.run(["docker", "run", "-d", "--rm", "--name", OPPONENT, "-p", f"{OPPONENT_PORT}:4567", "-e", "ROS_LOCALHOST_ONLY=1",
+                    "-e", "FEB_FOXGLOVE=0",
+                    "-v", f"{track}:/track:ro", "-v", f"{ROOT / 'starter_kit'}:/home/autodrive_devkit/src/stack:ro",
+                    "-e", f"FEB_LAUNCH={launch}", IMAGE], check=True, stdout=subprocess.DEVNULL)
+    proxy = ROOT / "febrace" / "proxy.py"
+    subprocess.run(["docker", "run", "-d", "--rm", "--name", PROXY, "--network=host", "-v", f"{proxy}:/tmp/proxy.py:ro",
+                    "--entrypoint", "python3", IMAGE, "-u", "/tmp/proxy.py", "--verbose", "--port", str(PROXY_PORT),
+                    "--devkits", str(PORT), str(OPPONENT_PORT), "--rate", "10"], check=True, stdout=subprocess.DEVNULL)
+    print(f"opponent: {'map-following' if level == 'map' else 'lidar'} house racer at {speed} m/s")
+
+
+# ------------------------------------------------------------------ Foxglove
+
+FOXGLOVE_URL = f"foxglove://open?ds=foxglove-websocket&ds.url=ws://localhost:{FOXGLOVE_PORT}"
+
+
+def foxglove_app():
+    """The Foxglove desktop app, if installed; the name changed from Foxglove Studio to Foxglove in 2024."""
+    system = platform.system()
+    if system == "Darwin":
+        candidates = [pathlib.Path("/Applications") / n for n in ("Foxglove.app", "Foxglove Studio.app")]
+    elif system == "Windows":
+        base = pathlib.Path(os.environ.get("LOCALAPPDATA", "")) / "Programs"
+        candidates = [base / "Foxglove" / "Foxglove.exe", base / "Foxglove Studio" / "Foxglove Studio.exe"]
+    else:
+        candidates = [pathlib.Path(p) for p in (shutil.which("foxglove"), shutil.which("foxglove-studio")) if p]
+        candidates += [pathlib.Path(os.environ.get("FEB_FOXGLOVE_APP", "/nonexistent"))]
+    return next((c for c in candidates if c.exists()), None)
+
+
+def open_foxglove():
+    """Open Foxglove on the running devkit (every topic, live). Prints the connection details if the
+    app is not installed, so the member can connect by hand or use the web app."""
+    app = foxglove_app()
+    hint = f"Foxglove: Open connection -> Foxglove WebSocket -> ws://localhost:{FOXGLOVE_PORT}"
+    if app is None:
+        print(f"{hint}  (desktop app not found; install from https://foxglove.dev/download)")
+        return
+    system = platform.system()
+    if system == "Darwin":
+        cmd = ["open", "-a", str(app), FOXGLOVE_URL]
+    elif system == "Windows":
+        cmd = [str(app), FOXGLOVE_URL]
+    else:
+        cmd = [str(app), FOXGLOVE_URL]
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"opened {app.name} on ws://localhost:{FOXGLOVE_PORT}")
+
+
+# ------------------------------------------------------------------ practice and submit
+
+def team_name():
+    try:
+        return json.loads(CONFIG.read_text())["team"]
+    except (OSError, KeyError, ValueError):
+        fail("no name yet; run `feb setup --name \"Your Name\"` (as listed in submissions.yaml)")
+
+
+def practice_set(kind):
+    """The practice tracks a driver of this kind is scored on: every qualifying track with walls
+    for a walls driver, with cones for a cones driver, both for 'any' or 'all'."""
+    out = []
+    for folder in sorted(TRACKS.glob("*/track.json")):
+        t = json.loads(folder.read_text())
+        if not t.get("qualifying", True):
+            continue
+        has = "cones" if t.get("cones") else "walls"
+        if kind in ("any", "all") or kind == has:
+            out.append(folder.parent)
+    return out
+
+
+def cmd_practice(args):
+    """Scored attempts under competition rules, on your own machine: one track with --track, or
+    the driver's whole practice set (its kind's qualifying tracks) without it."""
+    from febrace import rules
+    from febrace.runner import Attempt
+    kind = "all"
+    if args.driver:
+        args.stack, _ = driver_command(args)
+        kind = read_manifest(pathlib.Path(args.ws) if args.ws else default_ws(), args.driver)[0].get("kind", "any")
+    exe = app_executable()
+    if exe is None:
+        fail("simulator app not found; run `feb setup` or set FEB_SIM_APP")
+    if not args.stack:
+        fail("practice needs your stack: --driver NAME, or --stack \"ros2 launch feb_driver drive.launch.py\"")
+    if args.track and args.track != "all":
+        tracks = [pathlib.Path(resolve_track(args.track))]
+    else:
+        tracks = practice_set("all" if args.track == "all" else kind)
+        print(f"practice set for a {kind} driver: {', '.join(t.name for t in tracks)}  (about {4 * len(tracks)} min)")
+    docker("rm", "-f", OPPONENT, PROXY)        # practice has its own container and port; a running feb up is left alone
+    done = []
+    for track in tracks:
+        attempt = Attempt(image=IMAGE, track=track, sim_exe=exe, team=team_name(),
+                          rules=rules.Rules(laps=args.laps), port=PORT + 100, headless=args.headless,   # the box holds PORT
+                          stack_dir=pathlib.Path(args.ws).resolve() if args.ws else default_ws(), stack_cmd=args.stack, runs_dir=ROOT / "runs",
+                          adapter=getattr(args, "adapter", ""))
+        result = attempt.run()
+        if args.driver:        # what feb submit needs to push the code: the driver and where it lives
+            (attempt.dir / "driver.json").write_text(json.dumps({"driver": args.driver, "ws": str(pathlib.Path(args.ws).resolve() if args.ws else default_ws())}))
+        done.append((track.name, result, attempt.dir))
+        print(f"\n{track.name}: {result['status']}, laps {result['laps_completed']}, collisions {result['collisions']}, "
+              f"total {result['total_s']} s, best lap {result['best_lap_s']} s   ({attempt.dir.name})")
+    if len(done) > 1:
+        print("\n%-20s %-9s %5s %5s %9s" % ("track", "status", "laps", "hits", "total s"))
+        for name, r, _ in done:
+            print("%-20s %-9s %5s %5s %9s" % (name, r["status"], r["laps_completed"], r["collisions"], r["total_s"] or "-"))
+    clean = [d for _, r, d in done if r["status"] == "finished" and r["collisions"] == 0]
+    print(f"\n{len(clean)} of {len(done)} clean (finished, no collisions). Post them with: ./feb submit")
+
+
+def unsubmitted_runs(team, include_all=False):
+    """Run folders not yet posted: this team's, finished with at most the qualifying number of
+    collisions unless include_all, oldest first."""
+    from febrace.rules import QUALIFY_MAX_COLLISIONS
+    runs = []
+    for res in sorted((ROOT / "runs").glob("*/result.json"), key=os.path.getmtime):
+        r = json.loads(res.read_text())
+        if (res.parent / ".submitted").exists() or r.get("team") != team or r.get("event") != "practice":
+            continue
+        if include_all or (r["status"] == "finished" and r["collisions"] <= QUALIFY_MAX_COLLISIONS):
+            runs.append((res.parent, r))
+    return runs
+
+
+def cmd_submit(args):
+    """Post practice results to the scoreboard and the driver's code to the team repo, each as
+    one pull request (needs the gh CLI): every clean run not yet posted, or the one named."""
+    from febrace import results
+    if args.run:
+        d = pathlib.Path(args.run)
+        runs = [(d, json.loads((d / "result.json").read_text()))]
+    else:
+        runs = unsubmitted_runs(team_name(), args.all)
+    if not runs:
+        fail("nothing to post: no clean finished practice run (no collisions) that has not been posted; --all posts the rest, --run picks one")
+    for d, r in runs:
+        print(f"{r['track']:20s} {r['status']:9s} total {r['total_s']} s  ({d.name})")
+    drivers = {}
+    for d, _ in runs:
+        if (d / "driver.json").exists():
+            info = json.loads((d / "driver.json").read_text())
+            drivers.setdefault((info["driver"], info["ws"]), []).append(d)
+    if args.code and not drivers:
+        print("no driver recorded for these runs (practice without --driver): results only")
+    if args.dry_run:
+        for (name, ws), ds in drivers.items():
+            manifest, _ = read_manifest(pathlib.Path(ws), name)
+            print(f"code: {name} from {ws}: packages {', '.join(manifest.get('packages') or [name])} -> {STACK_REPO} drivers/{slug(team_name())}/")
+        print("dry run: nothing posted")
+        return
+    if not have_gh():
+        print("the GitHub CLI is not installed or not signed in (gh auth login): branches are pushed with git, open the pull requests from the links printed")
+    if args.results:
+        post_results(runs, results)
+    if args.code:
+        for (name, ws), ds in drivers.items():
+            post_code(name, pathlib.Path(ws), [json.loads((d / "result.json").read_text()) for d in ds])
+    for d, _ in runs:
+        (d / ".submitted").write_text(dt_now() + "\n")
+
+
+def have_gh():
+    """The GitHub CLI, installed and signed in; otherwise branches are pushed with git and the pull
+    requests opened from the links printed."""
+    if not shutil.which("gh"):
+        return False
+    try:
+        return subprocess.run(["gh", "auth", "status"], capture_output=True, timeout=15).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+
+
+def dt_now():
+    import datetime
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def slug(name):
+    return "".join(c if c.isalnum() else "_" for c in name.strip().lower()).strip("_")
+
+
+def git_in(repo, *a, check=True, capture=False):
+    return subprocess.run(["git", "-C", str(repo), *a], check=check, capture_output=capture, text=True)
+
+
+def post_results(runs, results):
+    """The scoreboard: result files on one branch, one pull request to feb-racing."""
+    paths = [results.save(r).relative_to(ROOT) for _, r in runs]
+    branch = f"result/{runs[-1][1]['id']}"
+    git_in(ROOT, "checkout", "-B", branch)
+    git_in(ROOT, "add", *[str(p) for p in paths])
+    summary = ", ".join(f"{r['track']} {r['total_s']} s" for _, r in runs)
+    git_in(ROOT, "commit", "-m", f"Practice results: {runs[0][1]['team']}: {summary}")
+    if git_in(ROOT, "push", "-u", "origin", branch, check=False).returncode != 0:
+        if not have_gh():
+            fail(f"could not push {branch} to origin and the GitHub CLI is not here to fork; install gh or ask for access")
+        subprocess.run(["gh", "repo", "fork", "--remote", "--remote-name", "fork"], cwd=ROOT, check=True)
+        git_in(ROOT, "push", "-u", "fork", branch)
+    git_in(ROOT, "checkout", "-")
+    if have_gh():
+        subprocess.run(["gh", "pr", "create", "--fill", "--head", branch], cwd=ROOT, check=True)
+        print(f"scoreboard: pull request opened with {len(runs)} result(s); it merges automatically once the checks pass")
+    else:
+        print(f"scoreboard: {len(runs)} result(s) pushed on {branch}. Open the pull request: https://github.com/{RESULTS_REPO}/compare/{branch}?expand=1")
+
+
+def post_code(name, ws, run_results):
+    """The code: the driver's packages copied into the team repo under drivers/<you>/, one commit
+    on your branch, one pull request to its main (updated if one is open). Clones the repo beside
+    this one the first time; pushes to your fork when you cannot push to the repo."""
+    manifest, _ = read_manifest(ws, name)
+    packages = manifest.get("packages") or [name]
+    me = slug(team_name())
+    if not TEAM_STACK.is_dir():
+        clone = ["gh", "repo", "clone", STACK_REPO, str(TEAM_STACK)] if have_gh() else \
+                ["git", "clone", f"git@github.com:{STACK_REPO}.git", str(TEAM_STACK)]
+        subprocess.run(clone, check=True)
+    shared = [p for p in packages if (TEAM_STACK / "shared" / p).is_dir()]
+    if shared:
+        fail(f"{', '.join(shared)} already live in {STACK_REPO}/shared (one copy for everyone); list only your own packages in {name}'s driver.yaml")
+    remotes = git_in(TEAM_STACK, "remote", capture=True).stdout.split()
+    remote = "fork" if "fork" in remotes else "origin"      # your fork once you have needed one
+    git_in(TEAM_STACK, "fetch", "-q", remote)
+    git_in(TEAM_STACK, "fetch", "-q", "origin")
+    have_branch = git_in(TEAM_STACK, "rev-parse", "-q", "--verify", f"{remote}/{me}", check=False, capture=True).returncode == 0
+    git_in(TEAM_STACK, "checkout", "-q", "-B", me, f"{remote}/{me}" if have_branch else "origin/main")   # continue your branch, else start from main
+    dest = TEAM_STACK / "drivers" / me
+    dest.mkdir(parents=True, exist_ok=True)
+    for pkg in packages:
+        src = next((p.parent for p in ws.rglob("package.xml") if p.parent.name == pkg and "/build/" not in str(p) and "/install/" not in str(p)), None)
+        if src is None:
+            fail(f"driver {name} lists package '{pkg}' but it is not in {ws}")
+        shutil.rmtree(dest / pkg, ignore_errors=True)
+        shutil.copytree(src, dest / pkg, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "build", "install", "log", ".git"))
+    git_in(TEAM_STACK, "add", "-A", f"drivers/{me}")
+    if git_in(TEAM_STACK, "diff", "--cached", "--quiet", check=False).returncode == 0:
+        print(f"code: {name} unchanged since the last push, nothing to do")
+        return
+    summary = ", ".join(f"{r['track']} {r['total_s']} s" for r in run_results)
+    git_in(TEAM_STACK, "commit", "-q", "-m", f"{name}: {summary}\n\nruns: {', '.join(r['id'] for r in run_results)}")
+    if git_in(TEAM_STACK, "push", "-q", "-u", remote, me, check=False).returncode != 0:
+        if remote == "fork" or not have_gh():
+            fail(f"could not push {me} to {remote} of {STACK_REPO}; see the git message above (no GitHub CLI here to fork)")
+        subprocess.run(["gh", "repo", "fork", "--remote", "--remote-name", "fork"], cwd=TEAM_STACK, check=True)
+        git_in(TEAM_STACK, "push", "-q", "-u", "fork", me)
+        remote = "fork"
+    git_in(TEAM_STACK, "checkout", "-q", "-")
+    if not have_gh():
+        print(f"code: {name} pushed on {me}. Open the pull request: https://github.com/{STACK_REPO}/compare/main...{me}?expand=1")
+        return
+    head = me if remote == "origin" else f"{gh_login()}:{me}"
+    open_prs = subprocess.run(["gh", "pr", "list", "--repo", STACK_REPO, "--head", head, "--state", "open", "--json", "number"],
+                              capture_output=True, text=True).stdout.strip()
+    if open_prs and open_prs != "[]":
+        print(f"code: pushed to {remote}/{me}; the open pull request to {STACK_REPO} is updated")
+    else:
+        subprocess.run(["gh", "pr", "create", "--repo", STACK_REPO, "--base", "main", "--head", head,
+                        "--title", f"{name} ({manifest.get('kind', 'any')}): {summary}",
+                        "--body", f"Driver `{name}` by {team_name()}.\n\nPractice runs: {', '.join(r['id'] for r in run_results)}\n\nPackages: {', '.join(packages)}"], check=True)
+        print(f"code: pull request opened to {STACK_REPO} from {head}")
+
+
+def gh_login():
+    return subprocess.run(["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True).stdout.strip()
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="feb", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="command", required=True)
+    up = sub.add_parser("up", aliases=["run"], help="house nodes in the box + simulator + Foxglove")
+    up.add_argument("--track", default="loop", help="track folder name in ./tracks, or a path")
+    up.add_argument("--mode", choices=["manual", "autonomous"], help="default: autonomous with --stack, manual without")
+    up.add_argument("--stack", default="", help='command that drives, e.g. "ros2 launch feb_driver drive.launch.py"')
+    up.add_argument("--driver", help="a driver package by name: its driver.yaml says how to launch it (see --mode-name)")
+    up.add_argument("--mode-name", dest="mode_name", help="which of the driver's modes (default: its default_mode)")
+    up.add_argument("--ws", help="workspace folder to build and source (default: feb-racing/stack)")
+    up.add_argument("--headless", action="store_true", help="no window (organiser harness)")
+    up.add_argument("--no-sim", action="store_true", help="house nodes only; you start the simulator app yourself")
+    up.add_argument("--car", action="store_true", help="on the Jetson: the car's drivers instead of the simulator")
+    up.add_argument("--deadman", action="store_true", help="the car's rules in the simulator: nothing drives unless a dead-man is held; this terminal is the gamepad (SPACE autonomous, M manual)")
+    up.add_argument("--max-speed", type=float, help="the supervisor's speed cap, m/s (default 1.0 on the car)")
+    up.add_argument("--lidar-hz", type=float, default=0, help="lidar scan rate override (default: the car's 40 Hz)")
+    up.add_argument("--noise", default="", help='sensor noise, "1" for defaults or e.g. "range_sigma:=0.03 beam_dropout:=0.05 latency:=0.05"')
+    up.add_argument("--cars", type=int, default=1, help="number of cars (head-to-head practice)")
+    up.add_argument("--opponent", choices=list(OPPONENT_SPEED) + ["map"], help="house racer in car 2: slow | normal | fast (lidar driver) or map")
+    up.add_argument("--camera", help="starting camera: \"God's Eye\", Trackcam, \"Driver's Eye\", ...")
+    up.add_argument("--no-foxglove", action="store_true", help="do not open Foxglove")
+    up.add_argument("--look", choices=["visual", "simple"], help="dressed scene or the bare one (default: last choice in the app, else visual)")
+    up.add_argument("--fps", type=int, help="render-rate cap (default 60, 0 = uncapped); keeps simulated time at real time")
+    up.add_argument("--camera-hz", type=float, help="bridge camera readback rate (default 10, 0 = every message)")
+    up.set_defaults(func=cmd_up)
+    practice = sub.add_parser("practice", help="scored attempts under competition rules: the driver's practice set, or one --track")
+    practice.add_argument("--track", help="one track (default: every qualifying track of the driver's kind; 'all' for all of them)")
+    practice.add_argument("--stack", default="", help='e.g. "ros2 launch feb_driver drive.launch.py"')
+    practice.add_argument("--driver", help="a driver package by name (its driver.yaml)")
+    practice.add_argument("--mode-name", dest="mode_name", help="which of its modes")
+    practice.add_argument("--ws", help="workspace folder with your packages (default: feb-racing/stack)")
+    practice.add_argument("--laps", type=int, default=10)
+    practice.add_argument("--headless", action="store_true")
+    practice.set_defaults(func=cmd_practice)
+    submit = sub.add_parser("submit", help="post the finished practice runs not yet posted, as one pull request")
+    submit.add_argument("--run", help="a single runs/<id> folder instead")
+    submit.add_argument("--all", action="store_true", help="also post runs with collisions, dnf and dsq")
+    submit.add_argument("--dry-run", action="store_true", help="list what would be posted")
+    submit.add_argument("--no-code", dest="code", action="store_false", help="results only, do not push the driver's code")
+    submit.add_argument("--no-results", dest="results", action="store_false", help="code only, do not post the results")
+    submit.set_defaults(func=cmd_submit)
+    setup = sub.add_parser("setup", help="install prerequisites, make the box, optionally set your team name")
+    setup.add_argument("--team", "--name", dest="team", help="how your results are listed: your name (or a team name) as in submissions.yaml")
+    setup.set_defaults(func=cmd_setup)
+    sub.add_parser("update", help="git pull, newer images, newer simulator app").set_defaults(func=cmd_update)
+    shell = sub.add_parser("shell", aliases=["ros"], help="a terminal in the box (ROS sourced)")
+    shell.add_argument("--gui", action="store_true", help="also open the box's desktop in the browser (rviz2, rqt, turtlesim)")
+    shell.add_argument("--apps", help='windows to open on the desktop: rviz, rqt, turtlesim, or any command; e.g. "turtlesim rqt"')
+    shell.add_argument("-c", "--command", help="run this in the box instead of giving a shell")
+    shell.set_defaults(func=cmd_shell)
+    code = sub.add_parser("code", help="VS Code attached to the box")
+    code.add_argument("--cursor", action="store_true", help="Cursor instead of VS Code")
+    code.set_defaults(func=cmd_code)
+    sub.add_parser("stop", help="end feb up; the box keeps running").set_defaults(func=cmd_stop)
+    sub.add_parser("reset", help="remove the box; the next command makes a fresh one").set_defaults(func=cmd_reset)
+    logs = sub.add_parser("logs", help="what feb up printed (the build, the house nodes, your stack); -f follows")
+    logs.add_argument("-f", "--follow", action="store_true")
+    logs.add_argument("-n", "--tail", default="200", help="lines to show (default 200, 'all')")
+    logs.set_defaults(func=cmd_logs)
+    args = ap.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

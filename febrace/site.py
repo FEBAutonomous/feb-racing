@@ -33,6 +33,28 @@ def h2h_standings(rows):
     return sorted(last.values(), key=lambda r: (-int(r.get("race", "r0").split("-")[0].lstrip("r") or 0), r.get("position", 9)))
 
 
+KINDS = (("walls", "Walls"), ("cones", "Cones"))
+
+
+def overall(kind, tracks):
+    """One board per kind of track: a team's totals on every qualifying track of that kind, summed.
+    Only teams that finished all of them appear; verified only if every leg is."""
+    legs = [t for t in tracks if t["qualifying"] and t["kind"] == kind]
+    teams = {}
+    for t in legs:
+        for r in t["standings"]:
+            if r["status"] == "finished":
+                teams.setdefault(r["team"], {})[t["id"]] = r
+    rows = []
+    for team, per in teams.items():
+        if len(per) == len(legs):
+            rows.append({"team": team, "total_s": round(sum(r["total_s"] for r in per.values()), 3),
+                         "verified": all(r.get("verified") for r in per.values()),
+                         "tracks": {tid: r["total_s"] for tid, r in per.items()}})
+    rows.sort(key=lambda r: (not r["verified"], r["total_s"]))
+    return {"kind": kind, "name": dict(KINDS)[kind], "tracks": [t["id"] for t in legs], "standings": rows}
+
+
 def build():
     teams = yaml.safe_load((ROOT / "submissions.yaml").read_text())["teams"]
     events = [yaml.safe_load(p.read_text()) for p in sorted((ROOT / "events").glob("*.yaml"))]
@@ -49,7 +71,8 @@ def build():
             shutil.copy(preview, OUT / "tracks" / f"{name}.png")
         rows = [r for r in all_results if r["event"] == "practice" and r["track"] == name]
         tracks.append({"id": name, "name": t["name"], "length": t["length"], "direction": t["direction"],
-                       "walls": bool(t["walls"]), "cones": bool(t["cones"]), "preview": preview.exists(),
+                       "walls": bool(t["walls"]), "cones": bool(t["cones"]), "kind": "cones" if t["cones"] else "walls",
+                       "preview": preview.exists(),
                        "qualifying": t.get("qualifying", True),
                        "category": t.get("category", "feb"), "difficulty": int(t.get("difficulty", 0)),
                        "standings": standings(rows), "attempts": len(rows)})
@@ -68,6 +91,7 @@ def build():
         team["qualification"], team["qualified"] = rules_mod.qualification(team["name"], track_ids, practice)
 
     data = {"teams": teams, "tracks": tracks, "events": events,
+            "overall": [overall(kind, tracks) for kind, _ in KINDS],
             "qualify": {"laps": rules_mod.Rules().laps, "max_collisions": rules_mod.QUALIFY_MAX_COLLISIONS},
             "generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
     (OUT / "data.json").write_text(json.dumps(data, indent=1, default=str))

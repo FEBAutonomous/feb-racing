@@ -7,16 +7,13 @@ Per lidar scan:
   3. aim into the widest remaining gap: a blend of its deepest beam and its middle
   4. pick a speed from the room ahead (a low percentile of the ranges inside the car's
      own corridor) and from how hard we are steering (a slow steering estimate)
-  5. turn the speed target into a throttle: feed-forward plus a bounded trim
+  5. publish the speed and the steering angle on /drive
 
 Everything that can jump beam-to-beam is rate-limited or low-passed, because the bridge
-can run as slow as 10 Hz and the simulator brakes hard at throttle 0: a plain PI speed
-loop surges and stops in a 0.8 s cycle, and raw gap targets weave full lock. The
-command is feed-forward (v / speed_per_throttle) plus a trim clipped to half of it,
-so it never reaches zero while speed is wanted.
+can run as slow as 10 Hz and raw gap targets weave full lock.
 
-Inputs: lidar and wheel encoders only. ips/odom/tf are barred at race time.
-Steering command is normalised [-1, 1] = [-0.5236, 0.5236] rad. Throttle 0 is a hard brake.
+Inputs: /scan and /odom (the car's own speed). Output: /drive (AckermannDriveStamped,
+speed in m/s, steering_angle in rad, at most +-0.5236). The same topics on the real car.
 """
 import math
 
@@ -24,10 +21,10 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
-from sensor_msgs.msg import JointState, LaserScan
-from std_msgs.msg import Float32
+from ackermann_msgs.msg import AckermannDriveStamped
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
 
-NS = "/autodrive/roboracer_1/"
 QOS = QoSProfile(reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE,
                  history=QoSHistoryPolicy.KEEP_LAST, depth=10)
 WHEELBASE = 0.324      # m
@@ -44,49 +41,30 @@ class ReactiveDriver(Node):
         defaults = dict(bubble=0.40, gap_fov=1.60, range_cap=6.0, steer_gain=0.7, deep_weight=0.6,
                         max_speed=2.5, min_speed=0.9, accel_limit=4.0, decel_limit=6.0, lat_accel=6.0,
                         brake_margin=0.40, clear_pct=3.0, clear_tau=0.30, curv_tau=0.35, goal_tau=0.30, steer_tau=0.20,
-                        speed_per_throttle=23.0, throttle_kp=0.02, throttle_ki=0.03, throttle_slew=0.8,
-                        speed_window=0.25, follow_gap=0.0)
+                        follow_gap=0.0)
         for key, value in defaults.items():
             self.declare_parameter(key, value)
         self.p = {k: self.get_parameter(k).value for k in defaults}
 
-        self.speed = 0.0            # m/s from the encoders
-        self.encoders = {}          # frame_id -> [(t, angle), ...] over the last speed_window
+        self.speed = 0.0            # m/s, from /odom
         self.steer = 0.0            # steering command, rad
         self.steer_slow = 0.0       # slow steering estimate for the cornering speed
         self.clearance = None       # low-passed range ahead
         self.v_goal = 0.0           # low-passed speed goal
         self.speed_cmd = 0.0        # accel/decel-limited speed target
-        self.integral = 0.0
-        self.throttle = 0.0
         self.last_scan_t = None
 
-        self.pub_throttle = self.create_publisher(Float32, NS + "throttle_command", QOS)
-        self.pub_steering = self.create_publisher(Float32, NS + "steering_command", QOS)
-        self.create_subscription(LaserScan, NS + "lidar", self.on_scan, QOS)
-        for side in ("left", "right"):
-            self.create_subscription(JointState, NS + side + "_encoder", self.on_encoder, QOS)
+        self.pub_drive = self.create_publisher(AckermannDriveStamped, "/drive", QOS)
+        self.create_subscription(LaserScan, "/scan", self.on_scan, QOS)
+        self.create_subscription(Odometry, "/odom", self.on_odom, QOS)
         self.get_logger().info("reactive driver up")
 
     # ---------------------------------------------------------------- sensing
 
-    def on_encoder(self, msg):
-        """Wheel speed over a short window of samples (works at 10 Hz); the history is
-        dropped when the angle jumps back, which happens on a collision respawn."""
-        t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-        angle = float(msg.position[0])
-        hist = self.encoders.setdefault(msg.header.frame_id, [])
-        if hist and angle < hist[-1][1]:
-            hist.clear()
-            self.integral = 0.0
-        hist.append((t, angle))
-        while len(hist) > 2 and t - hist[0][0] > self.p["speed_window"]:
-            hist.pop(0)
-        if len(hist) < 2 or t - hist[0][0] < 1e-3:
-            return
-        v = (angle - hist[0][1]) / (t - hist[0][0]) * WHEEL_RADIUS
-        if 0.0 <= v < 25.0:
-            self.speed = 0.5 * self.speed + 0.5 * v
+    def on_odom(self, msg):
+        """Speed as the car reports it: the wheel odometry on the real car, the same thing
+        dead-reckoned from the encoders in the simulator."""
+        self.speed = msg.twist.twist.linear.x
 
     # ---------------------------------------------------------------- driving
 
@@ -136,8 +114,7 @@ class ReactiveDriver(Node):
         self.v_goal += (goal - self.v_goal) * lowpass(dt, self.p["goal_tau"])
         self.speed_cmd += float(np.clip(self.v_goal - self.speed_cmd, -self.p["decel_limit"] * dt, self.p["accel_limit"] * dt))
 
-        self.throttle = self.throttle_for(self.speed_cmd, dt)
-        self.publish(self.throttle, self.steer)
+        self.publish(self.speed_cmd, self.steer)
 
     def gap_target(self, ranges, angles):
         """Bearing to aim at: inside the widest gap left after the safety bubble, between
@@ -164,20 +141,14 @@ class ReactiveDriver(Node):
         self.clearance = raw if self.clearance is None else self.clearance + (raw - self.clearance) * lowpass(dt, self.p["clear_tau"])
         return min(raw, self.clearance) if raw < self.p["brake_margin"] + 0.3 else self.clearance
 
-    def throttle_for(self, v_target, dt):
-        """Feed-forward from the steady-state gain plus a trim bounded to half of it, so the
-        command never drops to zero (a hard brake) while speed is wanted; slew-limited."""
-        ff = v_target / self.p["speed_per_throttle"]
-        error = v_target - self.speed
-        self.integral = float(np.clip(self.integral + error * dt, -0.8, 0.8))
-        trim = float(np.clip(self.p["throttle_kp"] * error + self.p["throttle_ki"] * self.integral, -0.5 * ff, 0.5 * ff))
-        wanted = float(np.clip(ff + trim, 0.0, 1.0))
-        slew = self.p["throttle_slew"] * dt
-        return float(np.clip(wanted, self.throttle - slew, self.throttle + slew))
-
-    def publish(self, throttle, steer):
-        self.pub_throttle.publish(Float32(data=throttle))
-        self.pub_steering.publish(Float32(data=steer / MAX_STEER))
+    def publish(self, speed, steer):
+        """The contract: a speed in m/s and a steering angle in rad on /drive. The sim adapter
+        (or the VESC driver on the car) turns them into throttle and servo."""
+        cmd = AckermannDriveStamped()
+        cmd.header.stamp = self.get_clock().now().to_msg()
+        cmd.header.frame_id = "base_link"
+        cmd.drive.speed, cmd.drive.steering_angle = float(speed), float(steer)
+        self.pub_drive.publish(cmd)
 
 
 def lowpass(dt, tau):

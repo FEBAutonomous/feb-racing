@@ -1,7 +1,8 @@
 # FEB devkit, gui tag: the devkit plus a desktop served as a web page, for rviz2, rqt and turtlesim
-# on any OS without an X server on the laptop. About 1.5 GB more than the base image, which is why
-# it is a separate tag. Build: docker build -f Dockerfile.gui -t ghcr.io/pranman1/feb-devkit:gui .
-FROM ghcr.io/pranman1/feb-devkit:latest
+# on any OS without an X server on the laptop. This is the image the box runs (feb-sim); the base
+# tag stays the league image. Build: docker build -f Dockerfile.gui -t ghcr.io/febautonomous/feb-devkit:gui .
+ARG BASE=ghcr.io/febautonomous/feb-devkit:latest
+FROM ${BASE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-desktop \
@@ -12,4 +13,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY entrypoint.sh /home/autodrive_devkit.sh
 COPY desktop.sh /home/autodrive_devkit/desktop.sh
 COPY rviz /home/autodrive_devkit/rviz
+RUN chmod -R a+rX /home/autodrive_devkit/rviz
 EXPOSE 6080

@@ -1,0 +1,47 @@
+# The real car. VESC values are the RoboRacer guide's for the Velineon 3500 (f1tenth_system,
+# config/vesc.yaml); the wheelbase is ours. Re-measure speed_to_erpm_gain after the first drive.
+/**:
+  ros__parameters:
+    # erpm = speed_to_erpm_gain * speed (m/s) + speed_to_erpm_offset
+    speed_to_erpm_gain: 4614.0
+    speed_to_erpm_offset: 0.0
+    # servo (0..1) = steering_angle_to_servo_gain * angle (rad) + steering_angle_to_servo_offset
+    steering_angle_to_servo_gain: -1.2135
+    steering_angle_to_servo_offset: 0.5304
+    port: /dev/sensors/vesc
+    duty_cycle_min: 0.0
+    duty_cycle_max: 0.0
+    current_min: 0.0
+    current_max: 100.0
+    brake_min: -20000.0
+    brake_max: 200000.0
+    speed_min: -23250.0
+    speed_max: 23250.0
+    position_min: 0.0
+    position_max: 0.0
+    servo_min: 0.15
+    servo_max: 0.85
+
+vesc_to_odom_node:
+  ros__parameters:
+    odom_frame: odom
+    base_frame: base_link
+    publish_tf: true
+    use_servo_cmd_to_calc_angular_velocity: true
+    wheelbase: 0.324
+
+rplidar_node:
+  ros__parameters:
+    serial_port: /dev/sensors/rplidar
+    serial_baudrate: 1000000       # the S2
+    frame_id: laser
+    inverted: false
+    angle_compensate: true
+    scan_mode: DenseBoost
+
+joy:
+  ros__parameters:
+    device_id: 0
+    deadzone: 0.05
+    autorepeat_rate: 20.0
+    coalesce_interval: 0.01

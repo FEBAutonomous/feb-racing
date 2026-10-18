@@ -9,8 +9,11 @@ Laps 2+ (RACING): the body's speed comes from the wheels through the measured ty
 position from dead reckoning corrected against the frozen map (ICP of the cones in view), and
 an MPC on the car's measured model tracks the raceline (controller.py, mpc.py, vehicle.py).
 
-Inputs: lidar, front_camera, imu, wheel encoders, steering feedback. No ground truth.
-Outputs: steering_command, throttle_command. Debug topics under /feb/.
+Inputs: the car's contract, /scan, /camera/color/image_raw, /imu, /odom (wheel speed and gyro
+from the adapter or the VESC), plus the simulator's steering feedback when it is there.
+Output: /drive (speed in m/s = the wheel speed the throttle law asks for, steering angle in rad).
+/feb/state from the supervisor: the race state only advances while AUTONOMOUS, and the MPC's
+warm start is reset when it begins. Debug topics under /feb/.
 """
 import math
 import time
@@ -21,7 +24,9 @@ from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
-from sensor_msgs.msg import Image, Imu, JointState, LaserScan
+from ackermann_msgs.msg import AckermannDriveStamped
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Image, Imu, LaserScan
 from std_msgs.msg import Float32, String
 
 from .controller import RaceController, wrap
@@ -30,7 +35,7 @@ from .params import RACE
 from .perception import BLUE, ORANGE, UNKNOWN, YELLOW, Perception
 from .raceline import min_curvature, speed_plan
 from .track import build_track, repair_by_path, track_from_rungs
-from .vehicle import AXLE_TO_LIDAR, BodySpeed
+from .vehicle import AXLE_TO_LIDAR, WHEEL_SPEED_PER_THROTTLE, BodySpeed
 
 try:                                     # the team's cone ordering, if its package is in the stack
     from feb_cone_ordering.srv import OrderCones
@@ -101,7 +106,7 @@ class Racer(Node):
             if not self.mpc.ok:
                 self.mpc = None
         except Exception as e:                      # noqa: BLE001
-            self.get_logger().warn("MPC unavailable (%s); racing with pure pursuit. Run install_deps.sh." % e)
+            self.get_logger().warn("MPC unavailable (%s); racing with pure pursuit. CasADi is in the devkit image; is this the box?" % e)
             self.mpc = None
         if self.mpc is None:
             self.get_logger().warn("CasADi not importable: mapping and raceline still run, control falls back to pure pursuit")
@@ -163,8 +168,8 @@ class Racer(Node):
         self.pushed = False
         self.path_reach = 0.0
 
-        self.pub_throttle = self.create_publisher(Float32, NS + "throttle_command", QOS)
-        self.pub_steering = self.create_publisher(Float32, NS + "steering_command", QOS)
+        self.pub_drive = self.create_publisher(AckermannDriveStamped, "/drive", QOS)
+        self.live = True                 # /feb/state says AUTONOMOUS (true until the supervisor says otherwise)
         self.pub_cones = self.create_publisher(PoseArray, "/feb/cones", 10)
         self.pub_map = self.create_publisher(PoseArray, "/feb/map", 10)
         # the team's cone ordering, live on the growing map: lap one follows its local path
@@ -179,12 +184,15 @@ class Racer(Node):
         self.pub_status = self.create_publisher(String, "/feb/status", 10)      # phase, what steers, active fallbacks
         self.status_t = -1e9
         self.pub_pred = self.create_publisher(Path, "/feb/mpc_prediction", 10)
-        self.create_subscription(LaserScan, NS + "lidar", self.on_scan, QOS)
-        self.create_subscription(Image, NS + "front_camera", self.perception.on_image, QOS)
-        self.create_subscription(Imu, NS + "imu", self.on_imu, QOS)
+        self.create_subscription(LaserScan, "/scan", self.on_scan, QOS)
+        self.create_subscription(Image, "/camera/color/image_raw", self.perception.on_image, QOS)
+        self.create_subscription(Imu, "/imu", self.on_imu, QOS)
+        self.create_subscription(Odometry, "/odom", self.on_odom, QOS)
+        self.create_subscription(String, "/feb/state", self.on_state, 10)
+        # the simulator reports the steering angle at the wheels; the real servo does not, so the
+        # command put through the servo's lag stands in for it when nothing arrives
         self.create_subscription(Float32, NS + "steering", self.on_steer_fb, QOS)
-        for side in ("left", "right"):
-            self.create_subscription(JointState, NS + side + "_encoder", self.on_encoder, QOS)
+        self.steer_fb_t = -1e9
         self.get_logger().info("racer up: mapping lap first, then %s" % ("MPC" if self.mpc else "pure pursuit"))
 
     # ------------------------------------------------------------ sensors
@@ -196,22 +204,37 @@ class Racer(Node):
 
     def on_steer_fb(self, msg):
         self.delta = float(msg.data)      # radians, left positive: same sign as the command (fitted on bags)
+        self.steer_fb_t = time.monotonic()
 
-    def on_encoder(self, msg):
-        t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-        angle = float(msg.position[0])
-        hist = self.encoders.setdefault(msg.header.frame_id, [])
-        if hist and angle < hist[-1][1] - 50.0:      # the counter was reset (a small decrease is the car reversing)
-            hist.clear()
-        hist.append((t, angle))
-        self.enc_now[msg.header.frame_id] = (t, angle)
-        while len(hist) > 2 and t - hist[0][0] > self.p["speed_window"]:
-            hist.pop(0)
-        if len(hist) < 2 or t - hist[0][0] < 1e-3:
-            return
-        v = (angle - hist[0][1]) / (t - hist[0][0]) * WHEEL_RADIUS
-        if -5.0 < v < 25.0:                          # signed: backing up must move the dead reckoning backwards too
-            self.speed = 0.5 * self.speed + 0.5 * v
+    def on_odom(self, msg):
+        """The wheels' speed as the adapter (or the VESC) reports it, signed."""
+        v = float(msg.twist.twist.linear.x)
+        if -5.0 < v < 25.0:
+            self.speed = v
+        if time.monotonic() - self.steer_fb_t > 1.0:      # no feedback: the command through the servo's lag
+            self.delta += (self.steer - self.delta) * min(1.0, 0.1 / 0.25)
+
+    def on_state(self, msg):
+        """The supervisor's word. The race state (lap closure, stall checks, lap counting) only
+        advances while AUTONOMOUS; when it begins, what remembers a command sequence starts clean."""
+        live = msg.data.startswith("AUTONOMOUS")
+        if live and not self.live:
+            self.ctl.reset()
+            self.integral, self.throttle, self.v_cmd = 0.0, 0.0, 0.0
+            self.stalled_since, self.push_until = None, None
+            self.get_logger().info("autonomous: control starts clean (map and position kept)")
+        elif self.live and not live:
+            self.get_logger().info("not driving: %s" % msg.data)
+        self.live = live
+
+    def send(self, steer, throttle):
+        """The contract: the wheel speed the throttle law wants, in m/s, and the steering angle."""
+        cmd = AckermannDriveStamped()
+        cmd.header.stamp = self.get_clock().now().to_msg()
+        cmd.header.frame_id = "base_link"
+        cmd.drive.speed = float(throttle) * WHEEL_SPEED_PER_THROTTLE
+        cmd.drive.steering_angle = float(steer)
+        self.pub_drive.publish(cmd)
 
     # ------------------------------------------------------------ main loop, per scan
 
@@ -235,8 +258,7 @@ class Racer(Node):
             if t - self.status_t > 0.5:
                 self.status_t = t
                 self.pub_status.publish(String(data=self.status_line(t, True)))
-            self.pub_throttle.publish(Float32(data=float(throttle)))
-            self.pub_steering.publish(Float32(data=float(steer / MAX_STEER)))
+            self.send(steer, throttle)
             self.publish_pose(msg.header)
             return
 
@@ -286,8 +308,11 @@ class Racer(Node):
                 steer, throttle = self.recover(t, dt)
             else:
                 self.seen_pose, self.recovering = self.pose.copy(), False
-        # stuck on a cone (wheels may spin, so watch the lidar scene): push once, then stop
-        if moving and not self.no_target:
+        # stuck on a cone (wheels may spin, so watch the lidar scene): push once, then stop.
+        # Not while a human drives or the car waits for the button: nothing is ours to judge
+        if not self.live:
+            self.stalled_since, self.push_until = None, None
+        if moving and not self.no_target or not self.live:
             self.stalled_since = None
             self.pushed = False
         if self.push_until is not None:
@@ -312,8 +337,7 @@ class Racer(Node):
         if t - self.status_t > 0.5:
             self.status_t = t
             self.pub_status.publish(String(data=self.status_line(t, moving)))
-        self.pub_throttle.publish(Float32(data=float(throttle)))
-        self.pub_steering.publish(Float32(data=float(steer / MAX_STEER)))
+        self.send(steer, throttle)
         self.publish_pose(msg.header)
 
     def scene_moving(self, msg, peek=False):
@@ -802,15 +826,8 @@ class Racer(Node):
     # ------------------------------------------------------------ racing
 
     def wheel_speed(self):
-        """The wheels' speed over the last scan, from the encoders' own angles and stamps."""
-        if len(self.enc_now) < 2:
-            return max(self.speed, 0.0)
-        stamp = max(e[0] for e in self.enc_now.values())
-        angle = float(np.mean([e[1] for e in self.enc_now.values()]))
-        prev, self.enc_prev = self.enc_prev, (stamp, angle)
-        if prev is None or stamp - prev[0] < 1e-3 or abs(angle - prev[1]) > 200.0:
-            return max(self.speed, 0.0)
-        return (angle - prev[1]) / (stamp - prev[0]) * WHEEL_RADIUS
+        """The wheels' speed, as /odom reports it (the adapter's encoder window, the VESC's ERPM)."""
+        return max(self.speed, 0.0)
 
     def race_scan(self, t, dt, clusters, cones):
         """One scan of a racing lap: where the car is, then what it should do."""
@@ -848,10 +865,10 @@ class Racer(Node):
             self.loc_log_t = t
             self.get_logger().info("racing: %d cones in view, %d matched, speed %.1f of %.1f m/s, %.2f m off the line, mpc %.0f ms"
                                    % (len(z_rel), matched, v, self.ctl.info.get("v_plan", 0.0), self.ctl.info.get("off", 0.0), self.ctl.solve_ms))
-        if max(blind, lost) > p["give_up_after"]:
+        if self.live and max(blind, lost) > p["give_up_after"]:
             self.halt("no cones in view for %.0f s" % blind if blind > lost else "the map has not matched for %.0f s" % lost)
             return 0.0, 0.0
-        if self.stuck(t):
+        if self.live and self.stuck(t):
             self.halt("not moving with the wheels turning")
             return 0.0, 0.0
         searching = self.race_ready_t is None and matched < 3       # the race has not found itself on the map yet
@@ -1062,6 +1079,5 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        node.pub_throttle.publish(Float32(data=0.0))
-        node.pub_steering.publish(Float32(data=0.0))
+        node.send(0.0, 0.0)
         node.destroy_node()

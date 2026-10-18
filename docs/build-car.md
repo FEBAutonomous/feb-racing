@@ -173,28 +173,40 @@ Antennas screwed onto the mount. Zip-tie every cable away from the driveshaft an
 
 ---
 
-## Session 4: software (an evening, mostly waiting)
+## Session 4: software (done 2026-10-18 for the Jetson; the VESC and the first drive remain)
 
-Guide: "Configure Jetson and Peripherals", then "Install RoboRacer Driver Stack", then
-"Configuring the VESC". Follow those pages; the only substitution is below.
+The Jetson is flashed and set up. What it is, so whoever picks it up knows:
 
-1. **Flash the Jetson** with NVIDIA SDK Manager from a laptop (JetPack 6 for the Orin Nano). Boot
-   it on a monitor once (the DP dummy plug is for running it headless later), connect Wi-Fi, note
-   its IP, then SSH from your laptop.
-2. **Driver stack:** the guide's ROS 2 Humble + `f1tenth_system` steps; its udev rules so the
-   VESC and lidar get fixed device names. **OURS:** where the lidar section offers Hokuyo or
-   SICK, we use `rplidar_ros` for the S2 instead (its README is two commands).
-3. **VESC Tool**, on your laptop, VESC on USB, car on a stand with the wheels in the air, battery
-   plugged in (this is the first time): update firmware, enable servo output and write it, load the
-   guide's motor XML, run motor detection, then the guide's hysteresis and PID steps. The wheels
-   will spin during detection; hold the car.
-4. **Gamepad** paired to the Jetson. In the guide's "Driving the RoboRacer Car": one button held is
-   the dead-man for manual, another for autonomous. Release and it stops.
+- **Flashed** from the team PC with Jetson Linux R36.4.3 (the JetPack 6.2 base) onto the NVMe,
+  by the script in `~/FEB/jetson-flash/prepare_and_flash.sh` on that PC. No SDK Manager: it
+  needs a web login, the plain Jetson Linux downloads do not. To reflash: power off, a jumper
+  across pins 9 and 10 of the J14 header while plugging the power in, USB-C to the PC, run the
+  script. The Jetson shows up as USB `0955:7523 NVIDIA APX` when it is in recovery mode.
+- **Login** `feb`, password `feb`, hostname `feb-car`. Autologin on a monitor.
+- **Networks, in the order it tries them:** a known Wi-Fi (home `mandem` is in; add a phone
+  hotspot the same way: `nmcli con add type wifi ssid NAME con-name NAME wifi-sec.key-mgmt wpa-psk wifi-sec.psk PASSWORD`);
+  if none is found 45 s after boot it becomes its own hotspot, SSID `feb-car`, password
+  `febautonomous`, address `10.42.0.1`. It is also on the team tailnet as `feb-car`, so with
+  any internet `ssh feb@feb-car` works from the Mac or the PC. Over a USB-C cable to a computer
+  it is `192.168.55.1`.
+- **Installed:** Docker, `feb` in the docker group; git, curl, PyYAML. `~/FEB/feb-racing` and
+  `~/FEB/feb-stack` cloned. The udev rules for the VESC (`/dev/sensors/vesc`) and the RPLidar S2
+  (`/dev/sensors/rplidar`) are in place, which is also how the launcher knows it is on a car.
+- **The box:** `cd ~/FEB/feb-racing && ./feb setup`, once the arm64 image is published by CI.
+  On a car the box gets `/dev` passed in, and `feb up` defaults to the `feb-stack` workspace.
 
-*Check:* on the stand, holding the dead-man, the left stick turns the front wheels, the trigger
-spins the rear wheels, letting go stops them. Then, and only then, the floor.
+Still to do, on the bench, wheels in the air:
 
----
+1. **VESC Tool** on a laptop, VESC on USB, battery plugged in (the first time): update
+   firmware, enable servo output and write it, load the guide's motor XML, run motor detection,
+   then the guide's hysteresis and PID steps. The wheels spin during detection; hold the car.
+2. **Pair the gamepad** dongle into the Jetson. `ls /dev/input/js0` shows it.
+3. **First `feb up --car`:** `./feb up --car --driver feb_driver --mode-name inspection`.
+   Watch the log for the VESC and lidar coming up, then `ros2 topic hz /scan` in `./feb shell`.
+   LB held, the left stick turns the front wheels and the right trigger spins the rear wheels;
+   let go and they stop. Then, and only then, the floor.
+
+*Check:* on the stand, holding the dead-man, the car answers the gamepad and stops on release.
 
 ## First drive
 A big empty floor, 1 m/s, the gamepad in your hand the whole time. Drive a few laps by hand. If it

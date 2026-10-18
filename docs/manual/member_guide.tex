@@ -1,0 +1,318 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+\usetikzlibrary{positioning,fit,backgrounds,calc,shapes.misc}
+\tikzset{
+  box/.style={draw=febblue,thick,rounded corners=3pt,fill=white,align=center,inner sep=6pt,font=\small},
+  soft/.style={draw=febblue!60,thick,rounded corners=3pt,fill=febblue!6,align=center,inner sep=6pt,font=\small},
+  state/.style={draw=febblue,thick,rounded corners=6pt,fill=white,align=center,inner sep=7pt,font=\small\bfseries,minimum width=24mm},
+  stop/.style={state,fill=red!8,draw=red!60!black},
+  go/.style={state,fill=green!10,draw=green!40!black},
+  outer/.style={draw=febblue!40,dashed,rounded corners=6pt,inner sep=10pt},
+  lbl/.style={font=\scriptsize\color{febblue},fill=white,inner sep=1pt},
+  flow/.style={-{Stealth[length=6pt]},thick,febblue},
+  both/.style={{Stealth[length=6pt]}-{Stealth[length=6pt]},thick,febblue},
+}
+\setlist{nosep,leftmargin=*}
+
+\begin{document}
+\febtitle{Member guide, release 2}{%
+  \textbf{Part I} & The box: your ROS 2 environment\\[3pt]
+  \textbf{Part II} & Drivers: write, score, submit\\[3pt]
+  \textbf{Part III} & The car\\}
+
+\section{What changed, in one minute}
+
+Release 2 replaces the throwaway devkit container with \textbf{the box}: a Linux machine with ROS~2
+Humble inside Docker that keeps what you install, sees your whole FEB folder, and runs the same on
+the car's Jetson. Your driver talks the real car's topics, so what laps in the simulator drives the
+car unchanged. The launcher is \cmd{feb}; \cmd{feb-sim} is gone.
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Was & Is \\
+\midrule
+\cmd{./feb-sim run} & \cmd{./feb up} \\
+\cmd{./feb-sim shell} & \cmd{./feb shell}, or \cmd{./feb code} for VS Code inside the box \\
+container wiped on every run & the box persists; \cmd{./feb reset} wipes it on purpose \\
+only \file{stack/} visible inside & all of \file{\textasciitilde/FEB} visible inside \\
+topics \texttt{/autodrive/roboracer\_1/*}, throttle in $[0,1]$ & \texttt{/scan}, \texttt{/odom}, \texttt{/imu}, camera in; \texttt{/drive} (m/s, rad) out \\
+one practice track & every practice track of your driver's kind \\
+submit posts a result & submit posts the results and your code \\
+\bottomrule
+\end{tabularx}
+
+\part{The box}
+
+\section{New member: setup}
+
+\begin{enumerate}
+  \item Install Docker Desktop (Mac, Windows; OrbStack also works on a Mac) or \cmd{docker.io}
+  (Linux), VS~Code with the \emph{Dev Containers} extension, and Foxglove from
+  \url{https://foxglove.dev/download}.
+  \item A folder for all FEB work, and the clone inside it:
+\begin{lstlisting}
+mkdir ~/FEB && cd ~/FEB
+git clone git@github.com:FEBAutonomous/feb-racing.git && cd feb-racing
+./feb setup --name "Your Name"
+\end{lstlisting}
+  \texttt{setup} pulls the image (a few GB, once), downloads the simulator app, creates your box.
+  \item \cmd{./feb up}: the simulator opens. Arrow keys drive. Close the window to stop.
+\end{enumerate}
+
+Windows: do all of this in a WSL~2 Ubuntu terminal with Docker Desktop's WSL integration on, and
+keep \file{\textasciitilde/FEB} inside WSL. Mac: keep it under \file{/Users}.
+
+\section{Already had release 1}
+
+\begin{lstlisting}
+cd feb-racing && git pull && ./feb setup
+\end{lstlisting}
+
+The clone must sit in a folder of its own: the box mounts the folder that holds it. If
+\file{feb-racing} is straight in your home folder, \cmd{mkdir \textasciitilde/FEB \&\& mv
+\textasciitilde/feb-racing \textasciitilde/FEB/} first; \texttt{setup} refuses otherwise. Your
+\file{stack/} keeps working. A node written against the old topics still drives in the simulator;
+to run on the car it needs the five topics of section~\ref{sec:contract}, about thirty lines for
+the gap follower.
+
+\section{How it fits together}
+
+\begin{center}
+\begin{tikzpicture}[node distance=8mm, font=\small]
+  \node[soft, text width=60mm] (box) {
+    \textbf{The box} (persistent container, your user)\\[1pt]
+    Ubuntu 22.04, ROS 2 Humble\\[3pt]
+    {\footnotesize\begin{tabular}{@{}l@{}}
+      terminals: \cmd{ros2}, \cmd{colcon}, pip, apt\\
+      house nodes: bridge, adapter, supervisor\\
+      Foxglove bridge on port 8765\\
+      browser desktop on port 6080
+    \end{tabular}}};
+  \node[box, above=of box] (editor) {\textbf{Editor}: VS Code, Cursor\\terminals open \emph{inside} the box};
+  \node[box, left=14mm of box, text width=30mm] (files) {\textbf{\textasciitilde/FEB/} on disk\\\file{feb-racing/}, \file{feb-stack/},\\anything else you clone};
+  \node[box, right=12mm of box, text width=24mm] (web) {\textbf{Browser}\\rviz2, rqt,\\turtlesim};
+  \node[box, below left=10mm and -10mm of box] (sim) {\textbf{Simulator app}\\native, uses the GPU};
+  \node[box, below right=10mm and -10mm of box] (fox) {\textbf{Foxglove app}\\native};
+  \draw[both] (files) -- node[lbl,above]{mounted} (box);
+  \draw[both] (editor) -- node[lbl,right]{Dev Containers} (box);
+  \draw[flow] (sim) -- node[lbl,left]{port 4567} (box);
+  \draw[flow] (box) -- node[lbl,right]{port 8765} (fox);
+  \draw[both] (box) -- node[lbl,above]{6080} (web);
+  \begin{scope}[on background layer]
+    \node[outer, fit=(files)(box)(editor)(sim)(fox)(web), label={[febblue,font=\small\bfseries]above left:Laptop}] {};
+  \end{scope}
+\end{tikzpicture}
+\end{center}
+
+The box is one container, made once by \texttt{setup}, started by whichever command needs it,
+kept until \cmd{./feb reset}. Your \file{\textasciitilde/FEB} folder is mounted into it at
+\file{/home/feb/FEB}: the same files, not a copy, so edit on the laptop with anything or inside
+the box, it makes no difference. What you \cmd{apt} or \cmd{pip} install lives in the box and goes
+with a reset or a new image; your files never do.
+
+\section{The commands}
+
+\begin{tabularx}{\linewidth}{>{\ttfamily\small}p{6.2cm}X}
+\toprule
+\normalfont Command & What it does \\
+\midrule
+./feb shell & a terminal in the box, in the folder you ran it from; open as many as you like \\
+./feb shell -{}-gui & the same, plus the box's desktop in a browser tab (rviz2, rqt, turtlesim) \\
+./feb code & VS Code attached to the box (\cmd{-{}-cursor} for Cursor) \\
+./feb up & house nodes, simulator, Foxglove; drive by hand; Ctrl-C ends it \\
+./feb up -{}-driver NAME & your driver races; \cmd{-{}-track T}, \cmd{-{}-mode-name M}, \cmd{-{}-noise 1}, \cmd{-{}-opponent normal} \\
+./feb up -{}-deadman -{}-driver NAME & the car's rules in the simulator (section~\ref{sec:deadman}) \\
+./feb stop & ends \texttt{feb up} from another terminal; the box stays \\
+./feb logs -f & what \texttt{feb up} printed \\
+./feb practice -{}-driver NAME & scored runs on every practice track of the driver's kind \\
+./feb submit & results to the scoreboard, code to the team repo, one pull request each \\
+./feb update & git pull, newer image (replaces the box), newer simulator \\
+./feb reset & a fresh box; your files are untouched \\
+\bottomrule
+\end{tabularx}
+
+\smallskip
+Inside the box there is nothing of ours to learn: \cmd{ros2}, \cmd{colcon}, \cmd{pip},
+\cmd{ros2 bag record -a}, and \cmd{rviz2 \&} which lands on the browser desktop.
+
+\part{Drivers}
+
+\section{A driver is one package}
+
+Copy the template and rename it:
+
+\begin{lstlisting}
+cp -r starter_kit/feb_driver stack/my_driver
+\end{lstlisting}
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+File & Holds \\
+\midrule
+\file{my\_driver/reactive\_driver.py} & the node: scan in, speed and steering out \\
+\file{config/driver.yaml} & every tuning number, one per line with a comment \\
+\file{config/driver.car.yaml} & only the numbers that differ on the real car; loaded on top, on the car only \\
+\file{launch/drive.launch.py} & starts the node with the yaml; includes \texttt{feb\_mission} if present \\
+\file{driver.yaml} & the driver's card (below) \\
+\bottomrule
+\end{tabularx}
+
+\begin{lstlisting}
+name: my_driver
+kind: walls                 # walls | cones | any
+maintainer: your name
+packages: [my_driver]       # what submit copies: your own packages
+modes:
+  trackdrive: {launch: drive.launch.py, max_speed: 3.0}
+  inspection: {launch: drive.launch.py, max_speed: 0.8}
+default_mode: trackdrive
+\end{lstlisting}
+
+A mode is a launch file plus a speed cap; \texttt{inspection} is the slow first lap of anything
+new, \texttt{trackdrive} the race. Edit the Python, save, run again: no rebuild for Python.
+Keep the package in git, \file{stack/} is ignored by this repo on purpose.
+
+\section{The contract}
+\label{sec:contract}
+
+\begin{tabularx}{\linewidth}{llX}
+\toprule
+Topic & Type & \\
+\midrule
+\texttt{/scan} & LaserScan & the lidar, 1080 beams over 270\textdegree, frame \texttt{laser} \\
+\texttt{/odom} & Odometry & pose and speed, dead-reckoned from the wheels and the gyro \\
+\texttt{/imu} & Imu & \\
+\texttt{/camera/color/image\_raw} & Image & the front camera (cone tracks) \\
+\texttt{/drive} & AckermannDriveStamped & \textbf{yours}: \texttt{drive.speed} in m/s, \texttt{drive.steering\_angle} in rad, at most $\pm0.5236$ \\
+\texttt{/feb/state} & String & what the supervisor is doing: IDLE, MANUAL, AUTONOMOUS, STOP \\
+\bottomrule
+\end{tabularx}
+
+\smallskip
+These are the RoboRacer car's topics. In the simulator an adapter provides them; on the car the
+VESC and lidar drivers do. A command older than half a second stops the car. The simulator's own
+\texttt{/autodrive/\ldots} topics remain for debugging; the car does not have them.
+
+\section{The dead-man, and the supervisor}
+\label{sec:deadman}
+
+On the car nothing moves unless a button on the gamepad is held. The supervisor is the node that
+enforces it; it sits between every driver and the wheels, in the simulator and on the car alike.
+
+\begin{center}
+\begin{tikzpicture}[font=\small]
+  \node[state] (idle) at (0,0) {IDLE};
+  \node[state] (manual) at (-5,0) {MANUAL};
+  \node[go] (auto) at (5,0) {AUTONOMOUS};
+  \node[stop] (stop) at (0,-2.6) {STOP};
+  \draw[flow] (idle.north west) to[bend right=20] node[lbl,above]{LB held} (manual.north east);
+  \draw[flow] (manual.south east) to[bend right=20] node[lbl,below]{released} (idle.south west);
+  \draw[flow] (idle.north east) to[bend left=20] node[lbl,above]{RB held} (auto.north west);
+  \draw[flow] (auto.south west) to[bend left=20] node[lbl,below]{released} (idle.south east);
+  \draw[flow,red!60!black] (manual.south) to[bend right=15] node[lbl,below left,text=red!60!black]{fault} (stop.west);
+  \draw[flow,red!60!black] (auto.south) to[bend left=15] node[lbl,below right,text=red!60!black]{fault} (stop.east);
+  \draw[flow] (stop.north) -- node[lbl,right]{every button released, lidar back, 1 s} (idle.south);
+  \node[font=\scriptsize\color{red!60!black}] at (0,-3.5) {fault: lidar silent for 0.5 s, the X button, or a collision imminent};
+\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+  \item \textbf{IDLE}: the car sits. Your stack is running and publishing \texttt{/drive}; it goes nowhere.
+  \item \textbf{MANUAL}, LB held: the sticks drive. For positioning the car and checking wiring.
+  \item \textbf{AUTONOMOUS}, RB held: your \texttt{/drive} reaches the wheels, clipped to the mode's cap.
+  \item \textbf{STOP}: brakes. Entered when the lidar goes silent, the stop button is pressed, or a
+  collision is imminent; left for IDLE only once every button is released and the sensors are back.
+  \item Release either button: zero speed, which is a brake, within a third of a second.
+\end{itemize}
+
+\textbf{In the simulator}, \cmd{./feb up -{}-deadman -{}-driver NAME} runs the same rules with the
+keyboard as the pad: hold SPACE for RB, hold M for LB with the arrows driving, X for the stop
+button, Q to quit. The nodes' output goes to \cmd{./feb logs -f} in another terminal. Run every
+driver this way once before it goes near the car.
+
+\textbf{Your stack and the state.} The button never starts or stops your stack; it only gates its
+output. So anything that remembers, an MPC's warm start, a localiser, an integrator, is stale when
+RB goes down. The rule: \emph{on AUTONOMOUS, start clean}. \texttt{feb\_mission}, a forty-line
+package in the starter kit, turns \texttt{/feb/state} into two hooks, \texttt{on\_go} and
+\texttt{on\_stop}, and a live flag; a stack with memory fills them in. The gap follower needs none
+of it.
+
+\section{Score and submit}
+
+\begin{lstlisting}
+./feb practice --driver my_driver        # every practice track of its kind, competition rules
+./feb submit --dry-run                   # what would be posted
+./feb submit
+\end{lstlisting}
+
+\texttt{practice} runs each track in its own clean container the way the competition does: a
+warm-up lap and ten timed laps, 300~s limit, 10~s per collision, headless at the 10~Hz scoring
+rate. Each run lands in \file{runs/<id>/} with a result file, a bag and the logs.
+
+\texttt{submit} does two things from one command. It posts every clean run (finished, no
+collisions) not yet posted to the scoreboard as one pull request to \file{feb-racing}, which
+checks and merges itself; the site rebuilds and your time appears, unverified until the nightly
+rerun. And it copies your driver's packages, the \texttt{packages:} list in its card, into the
+team repo \file{feb-stack} under \file{drivers/<your name>/}, on a branch named after you, with a
+pull request to main that the lead reviews. Nothing changed since last time: nothing is pushed.
+\cmd{-{}-no-code} and \cmd{-{}-no-results} pick one half.
+
+\begin{center}
+\begin{tikzpicture}[node distance=6mm and 10mm, font=\small]
+  \node[box] (prac) {\cmd{feb practice}\\runs in \file{runs/}};
+  \node[box, right=of prac] (sub) {\cmd{feb submit}};
+  \node[box, above right=4mm and 10mm of sub, text width=36mm] (res) {\textbf{feb-racing}\\\file{results/practice/<track>/}\\PR, auto-merged, site rebuilds};
+  \node[box, below right=4mm and 10mm of sub, text width=36mm] (code) {\textbf{feb-stack}\\\file{drivers/<you>/<pkg>/}\\PR, the lead merges};
+  \node[box, right=of code, text width=26mm] (car) {\textbf{the car}\\\cmd{git pull}\\\cmd{feb up -{}-car}};
+  \draw[flow] (prac) -- (sub);
+  \draw[flow] (sub) -- node[lbl,above,sloped]{clean results} (res);
+  \draw[flow] (sub) -- node[lbl,below,sloped]{your packages} (code);
+  \draw[flow] (code) -- node[lbl,above]{merged} (car);
+\end{tikzpicture}
+\end{center}
+
+\textbf{The team repo.} \file{FEBAutonomous/feb-stack} holds the drivers that drive, one folder
+per person under \file{drivers/}, and one copy of the shared packages under \file{shared/}
+(\texttt{feb\_mission}, \texttt{feb\_cone\_ordering}). Nobody edits it by hand. To run a
+teammate's merged driver in your simulator: \cmd{./feb up -{}-ws \textasciitilde/FEB/feb-stack
+-{}-driver theirs}.
+
+\part{The car}
+
+\section{From a merged driver to the wheels}
+
+The Jetson on the car has the same box, the same \file{\textasciitilde/FEB} folder, and the pad's
+dongle. Whoever runs the car, over ssh:
+
+\begin{lstlisting}
+cd ~/FEB/feb-stack && git pull
+cd ~/FEB/feb-racing
+./feb up --car --driver my_driver --mode-name inspection
+\end{lstlisting}
+
+On the car the workspace is \file{feb-stack} by default, so every merged driver is built and the
+named one launches: the VESC, lidar and gamepad drivers instead of the simulator, the supervisor
+with the dead-man required and the mode's cap, then your launch file with your car yaml on top.
+LB held, a human drives; RB held, your code drives; let go, it stops. Foxglove on a laptop at
+\texttt{ws://<the car>:8765} shows the same panels as in the simulator. First drive in
+\texttt{inspection}, then \texttt{trackdrive}. The lead's own notes on the car, wiring to first
+drive, are \file{docs/build-car.md}.
+
+\section{When something is wrong}
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Symptom & Fix \\
+\midrule
+\texttt{ros2: command not found} & you are in a laptop terminal: \cmd{./feb shell} \\
+my node is not there & it did not build: \cmd{./feb logs -n 100}, or \cmd{colcon build} in the workspace and read it \\
+the simulator says not connected & the house nodes are still starting; \cmd{./feb logs -f} \\
+\texttt{port is already allocated} & another box holds the port: \cmd{./feb reset} \\
+\texttt{mounts denied} (Mac) & \file{\textasciitilde/FEB} is outside \file{/Users}: move it \\
+the browser desktop will not connect & reload; still nothing, \cmd{./feb reset} \\
+nothing is clean enough to submit & a run with a collision is not posted by default; drive slower, or \cmd{-{}-all} \\
+anything weird & \cmd{./feb reset}: thirty seconds, nothing of yours is in there \\
+\bottomrule
+\end{tabularx}
+
+\end{document}

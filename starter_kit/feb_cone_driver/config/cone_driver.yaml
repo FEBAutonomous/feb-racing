@@ -1,7 +1,7 @@
 # Tune these. Every value has a comment in cone_driver.py.
 cone_driver:
   ros__parameters:
-    max_speed: 1.2        # m/s on a straight
+    max_speed: 1.7        # m/s on a straight (10 laps of loop_cones fit the 300 s attempt; clean at this speed)
     min_speed: 1.0        # m/s floor, and the crawl with nothing to follow
     lookahead: 1.0        # m, pure-pursuit target distance along the centreline
     track_width: 2.2      # m, used when only one side of cones is visible
@@ -31,11 +31,6 @@ cone_driver:
     avoid_range: 0.9      # m; any cone closer than this ahead pushes the steering away from it
     stall_time: 2.0       # s of the lidar scene not changing while driving before we assume we are stuck
     reverse_time: 1.2     # s to back away with the wheel turned the other way
-    reverse_throttle: 0.12
+    reverse_speed: 0.5    # m/s backwards while unsticking
     chain_step: 1.8       # m, the smallest allowed gap between consecutive cones of one colour when ordering them (grows to twice the spacing in view)
-    speed_per_throttle: 23.0
-    throttle_kp: 0.02
-    throttle_ki: 0.03
-    throttle_slew: 0.8
-    speed_window: 0.25
     steer_tau: 0.15

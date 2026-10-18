@@ -33,12 +33,13 @@ one; the app is \texttt{FEB Simulator.exe} under
 In Git Bash:
 
 \begin{lstlisting}
-git clone https://github.com/Pranman1/feb-racing
+mkdir ~/FEB && cd ~/FEB
+git clone https://github.com/FEBAutonomous/feb-racing
 cd feb-racing
-./feb-sim setup --team "Your Team"
+./feb setup --name "Your Name"
 \end{lstlisting}
 
-Pulls the devkit image and downloads the Windows app into \texttt{\textasciitilde/.feb-sim/app/}
+Pulls the image, creates your box and downloads the Windows app into \texttt{\textasciitilde/.feb-sim/app/}
 (that is \texttt{C:\textbackslash Users\textbackslash you\textbackslash.feb-sim}). A few minutes.
 The app is not signed, so the first launch shows a SmartScreen warning: click \emph{More info},
 then \emph{Run anyway}, once.

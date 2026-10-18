@@ -3,4 +3,7 @@
 teams:
   - name: Example Team
     members: [Pranman1]
-    image: ghcr.io/pranman1/feb-devkit:latest
+    image: ghcr.io/febautonomous/feb-devkit:latest
+  - name: Pranav
+    members: [Pranman1]
+    image: ghcr.io/febautonomous/feb-devkit:latest

@@ -11,7 +11,7 @@ need access to it.
 - Ground-truth topics (`ips`, `odom`, `tf`, lap and collision counters, `reset_command`) are for
   training and debugging only. The harness audits which nodes subscribe to them during the run and
   flags the result (`restricted_subscribers`); the site shows a red badge.
-- Qualifying for the first competition: a verified practice run of 10 laps with at most 1 collision
+- Qualifying for the first competition: a verified practice run of 10 laps with no collisions
   on every practice track (`./feb-race qualified`; `entries: qualified` in the event file). The final
   is a head-to-head knockout, two cars per race, for the top seeds (`top: 8` in the event file).
 - Everything a submission needs must start from the container's entrypoint
@@ -32,7 +32,7 @@ need access to it.
 
 ## Practice leaderboard
 
-- Members post their own attempts with `feb-sim submit` (a pull request that merges itself
+- Members post their own attempts with `feb submit` (a pull request that merges itself
   once `.github/workflows/results-pr.yml` validates it). They show as *unverified*.
 - `./feb-race verify results/practice/<track>/<file>.json` reruns that image here and posts a
   verified result; `./feb-race nightly` reruns every registered image on every practice track.

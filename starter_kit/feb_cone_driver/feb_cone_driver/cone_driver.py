@@ -8,14 +8,14 @@ The simplest complete version of the pipeline the FSAE car runs, on the RoboRace
   4. memory   -> a cone's colour is carried from scan to scan (positions stay fresh from the
                  lidar), so cones beside the car, out of the camera's view, keep their colour
   5. ordering -> blue cones bound the left, yellow the right; pair them, midpoints = centreline
-  6. control  -> pure pursuit on the centreline, a slow speed law, the starter kit's throttle law
+  6. control  -> pure pursuit on the centreline and a slow speed law, published on /drive
 
 The same stages as the team's FSAE stack (perception, tracking, cone ordering, path, control)
 in their simplest form: no neural network, no map, no graph optimisation. It drives the cone tracks at
 1 to 1.5 m/s and publishes what it sees so Foxglove can show it. Speed, lookahead and
 thresholds are parameters (config/cone_driver.yaml).
 
-Inputs: lidar, front_camera, imu, wheel encoders. Outputs: steering_command, throttle_command.
+Inputs: /scan, /camera/color/image_raw, /imu, /odom. Output: /drive (speed m/s, steering angle rad).
 Debug: /feb/cones (PoseArray, x forward, orientation.w encodes colour), /feb/centreline (Path).
 """
 import math
@@ -28,10 +28,9 @@ from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
-from sensor_msgs.msg import Image, Imu, JointState, LaserScan
-from std_msgs.msg import Float32
-
-NS = "/autodrive/roboracer_1/"
+from ackermann_msgs.msg import AckermannDriveStamped
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Image, Imu, LaserScan
 QOS = QoSProfile(reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.VOLATILE,
                  history=QoSHistoryPolicy.KEEP_LAST, depth=10)
 WHEELBASE = 0.324
@@ -49,9 +48,8 @@ class ConeDriver(Node):
                         cluster_gap=0.15, cone_max_width=0.35, cone_max_points=80, match_px_frac=0.04,
                         min_blob_px=3, camera_hfov_deg=57.1, camera_ahead=-0.66, camera_lateral=-0.033, camera_col_bias=-1.0, camera_lag_s=0.073,
                         hsv_blue=[105, 220, 8, 135, 255, 255], hsv_yellow=[18, 150, 8, 40, 255, 255], hsv_orange=[0, 150, 15, 15, 255, 255],
-                        band_top=0.20, band_bottom=0.36, band_floor=0.21, orange_min_px=35, track_gate=0.4, track_memory=40, chain_step=1.8, side_override_x=1.5, side_override_y=0.6, side_guess_range=2.5, avoid_range=0.9, stall_time=2.0, reverse_time=1.2, reverse_throttle=0.12,
-                        speed_per_throttle=23.0, throttle_kp=0.02, throttle_ki=0.03, throttle_slew=0.8,
-                        speed_window=0.25, steer_tau=0.15)
+                        band_top=0.20, band_bottom=0.36, band_floor=0.21, orange_min_px=35, track_gate=0.4, track_memory=40, chain_step=1.8, side_override_x=1.5, side_override_y=0.6, side_guess_range=2.5, avoid_range=0.9, stall_time=2.0, reverse_time=1.2,
+                        reverse_speed=0.5, steer_tau=0.15)
         for key, value in defaults.items():
             self.declare_parameter(key, value)
         self.p = {k: self.get_parameter(k).value for k in defaults}
@@ -60,31 +58,27 @@ class ConeDriver(Node):
         self.blobs = []              # [(colour, u_centre_px, area)] from the latest image
         self.image_width = None
         self.image_height = None
-        self.speed = 0.0
-        self.encoders = {}
+        self.speed = 0.0             # m/s, from /odom
         self.yaw = None
         self.yaw_rate = 0.0
         self.prev_yaw = None
         self.prev = []               # last scan's cones: (x, y, colour, scans since the camera last saw it)
         self.steer = 0.0
-        self.throttle = 0.0
-        self.integral = 0.0
+        self.v_cmd = 0.0             # the speed we last asked for
         self.last_t = None
         self.prev_clusters = None    # last scan's cone clusters, to tell whether the world moves past us
         self.stalled_since = None    # sim time the lidar scene stopped changing although we were driving
         self.reverse_until = None    # sim time until which we back away from whatever we are stuck on
         self.target_t = -1e9         # sim time of the last scan that gave a target
 
-        self.pub_throttle = self.create_publisher(Float32, NS + "throttle_command", QOS)
-        self.pub_steering = self.create_publisher(Float32, NS + "steering_command", QOS)
+        self.pub_drive = self.create_publisher(AckermannDriveStamped, "/drive", QOS)
         self.pub_cones = self.create_publisher(PoseArray, "/feb/cones", 10)
         self.pub_line = self.create_publisher(Path, "/feb/centreline", 10)
         self.pub_target = self.create_publisher(PoseStamped, "/feb/target", 10)
-        self.create_subscription(LaserScan, NS + "lidar", self.on_scan, QOS)
-        self.create_subscription(Image, NS + "front_camera", self.on_image, QOS)
-        self.create_subscription(Imu, NS + "imu", self.on_imu, QOS)
-        for side in ("left", "right"):
-            self.create_subscription(JointState, NS + side + "_encoder", self.on_encoder, QOS)
+        self.create_subscription(LaserScan, "/scan", self.on_scan, QOS)
+        self.create_subscription(Image, "/camera/color/image_raw", self.on_image, QOS)
+        self.create_subscription(Imu, "/imu", self.on_imu, QOS)
+        self.create_subscription(Odometry, "/odom", self.on_odom, QOS)
         self.get_logger().info("cone driver: lidar + camera fusion, pure pursuit at %.1f m/s" % self.p["max_speed"])
 
     # ------------------------------------------------------------------ camera: colour blobs
@@ -338,8 +332,8 @@ class ConeDriver(Node):
         cones = self.fuse(clusters, dt)
         line = self.centreline(cones)
         self.publish_debug(msg.header, cones, line)
-        self.get_logger().info("clusters %d blobs %d cones %d line %d speed %.2f throttle %.3f" % (
-            len(clusters), len(self.blobs), len(cones), len(line), self.speed, self.throttle), throttle_duration_sec=2.0)
+        self.get_logger().info("clusters %d blobs %d cones %d line %d speed %.2f cmd %.2f" % (
+            len(clusters), len(self.blobs), len(cones), len(line), self.speed, self.v_cmd), throttle_duration_sec=2.0)
 
         # pure pursuit toward the centreline point nearest the lookahead distance; with no
         # cones at all, hold the wheel straight and crawl
@@ -376,14 +370,13 @@ class ConeDriver(Node):
         # encoders): back away for a moment with the wheel turned the other way, then carry on
         if self.reverse_until is not None:
             if t < self.reverse_until:
-                self.pub_throttle.publish(Float32(data=-self.p["reverse_throttle"]))
-                self.pub_steering.publish(Float32(data=-self.steer / MAX_STEER))
+                self.publish(-self.p["reverse_speed"], -self.steer)
                 return
             self.reverse_until, self.stalled_since = None, None
-            self.throttle, self.integral = 0.0, 0.0
+            self.v_cmd = 0.0
         if moving and target is not None:
             self.stalled_since = None
-        elif self.throttle > 0.02 or target is None:
+        elif self.v_cmd > 0.05 or target is None:
             # stuck on a cone, or stopped with nothing to follow (nosed out of the corridor at a
             # hairpin): both end the same way, back up and look again
             self.stalled_since = self.stalled_since or t      # sticky: a throttle dip does not reset it
@@ -395,12 +388,8 @@ class ConeDriver(Node):
 
         # slower the harder we steer; with nothing to follow, stop rather than wander off
         v_goal = max(self.p["min_speed"], self.p["max_speed"] * (1.0 - 0.7 * abs(self.steer) / MAX_STEER))
-        if target is None:
-            self.throttle, self.integral = 0.0, 0.0
-        else:
-            self.throttle = self.throttle_law(self.speed, v_goal, dt)
-        self.pub_throttle.publish(Float32(data=self.throttle))
-        self.pub_steering.publish(Float32(data=self.steer / MAX_STEER))
+        self.v_cmd = 0.0 if target is None else v_goal
+        self.publish(self.v_cmd, self.steer)
 
     def scene_moving(self, clusters, dt):
         """True when the world moves past the car: cone clusters matched to last scan's by
@@ -417,34 +406,20 @@ class ConeDriver(Node):
         if near.sum() < 3:
             return True
         forward = np.median(np.abs(cur[near, 0] - prev[j[near], 0]))
-        expected = max(self.speed * dt, 0.03 if self.throttle > 0.04 else 0.0)
+        expected = max(self.speed * dt, 0.03 if self.v_cmd > 0.1 else 0.0)
         return bool(expected <= 0.0 or forward > 0.4 * expected)
 
-    def throttle_law(self, v, v_t, dt):
-        """Feed-forward plus a trim bounded to half of it (throttle 0 is a hard brake here)."""
-        ff = v_t / self.p["speed_per_throttle"]
-        err = v_t - v
-        self.integral = float(np.clip(self.integral + err * dt, -0.8, 0.8))
-        bound = ff if v < 0.3 else 0.5 * ff             # from rest, allow the full trim to overcome stiction
-        trim = float(np.clip(self.p["throttle_kp"] * err + self.p["throttle_ki"] * self.integral, -bound, bound))
-        wanted = float(np.clip(ff + trim, 0.0, 1.0))
-        slew = self.p["throttle_slew"] * dt
-        return float(np.clip(wanted, self.throttle - slew, self.throttle + slew)) if self.throttle > 0.0 else wanted
+    def on_odom(self, msg):
+        """Speed as the car reports it (wheel odometry on the car, the same dead-reckoned in the sim)."""
+        self.speed = msg.twist.twist.linear.x
 
-    def on_encoder(self, msg):
-        t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-        angle = float(msg.position[0])
-        hist = self.encoders.setdefault(msg.header.frame_id, [])
-        if hist and angle < hist[-1][1]:
-            hist.clear()
-        hist.append((t, angle))
-        while len(hist) > 2 and t - hist[0][0] > self.p["speed_window"]:
-            hist.pop(0)
-        if len(hist) < 2 or t - hist[0][0] < 1e-3:
-            return
-        v = (angle - hist[0][1]) / (t - hist[0][0]) * WHEEL_RADIUS
-        if 0.0 <= v < 25.0:
-            self.speed = 0.5 * self.speed + 0.5 * v
+    def publish(self, speed, steer):
+        """The contract: speed in m/s and steering angle in rad on /drive."""
+        cmd = AckermannDriveStamped()
+        cmd.header.stamp = self.get_clock().now().to_msg()
+        cmd.header.frame_id = "base_link"
+        cmd.drive.speed, cmd.drive.steering_angle = float(speed), float(steer)
+        self.pub_drive.publish(cmd)
 
     # ------------------------------------------------------------------ debug topics
 
@@ -473,7 +448,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        node.pub_throttle.publish(Float32(data=0.0))
+        node.publish(0.0, 0.0)
         node.destroy_node()
 
 

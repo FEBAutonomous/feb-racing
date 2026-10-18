@@ -1,13 +1,12 @@
 import os
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
-# scipy and CasADi are not in the devkit image: install them once into stack/.pydeps
-# (see install_deps.sh) and the node imports them from there.
-DEPS = "/home/autodrive_devkit/src/stack/.pydeps"
+# scipy and CasADi are in the image since devkit v2; FEB_PYDEPS is the old private install, kept as a fallback.
+DEPS = os.environ.get("FEB_PYDEPS", "/home/autodrive_devkit/src/stack/.pydeps")
 
 
 def generate_launch_description():
@@ -17,6 +16,7 @@ def generate_launch_description():
     extra = os.environ.get("FEB_RACER_PARAMS", "")
     files = [params] + ([extra] if extra and os.path.exists(extra) else [])
     actions = [
+        DeclareLaunchArgument("mode", default_value="trackdrive"),
         SetEnvironmentVariable("PYTHONPATH", DEPS + ":" + os.environ.get("PYTHONPATH", "")),
         Node(package="feb_cone_racer", executable="racer", name="racer",
              parameters=files + [{"use_sim_time": True}], output="screen", emulate_tty=True),
