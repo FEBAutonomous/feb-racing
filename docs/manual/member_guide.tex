@@ -60,8 +60,10 @@ Linux & \cmd{sudo apt install docker.io}, \cmd{sudo usermod -aG docker \$USER}, 
 \medskip
 Where things live: Mac, under \file{/Users}, which \file{\textasciitilde/FEB} already is. Windows,
 \textbf{inside WSL}: every command in this guide is typed in the Ubuntu terminal, never PowerShell,
-and \file{\textasciitilde/FEB} is the Ubuntu home, not \file{C:}. Foxglove is optional everywhere;
-the browser desktop covers most of it.
+and \file{\textasciitilde/FEB} is the Ubuntu home, not \file{C:}. The simulator then runs as a Linux
+app inside WSL and gets its window from WSLg, built into Windows~11; on Windows~10 install WSL from
+the Microsoft Store, not the old built-in one, to get it. Foxglove is optional everywhere; the
+browser desktop covers most of it.
 
 \subsection*{2. Had the old devkit? Delete it}
 
@@ -97,8 +99,8 @@ clone line.
 
 The simulator opens. Arrow keys drive. Close the window to stop. \cmd{./feb up -{}-driver
 feb\_driver} races the starter driver instead. Mac, first time only: if macOS refuses to open the
-simulator, right-click the app in \file{\textasciitilde/Library/Application Support/feb-sim/app} and
-choose Open.
+simulator, right-click \file{FEB Simulator.app} in \file{\textasciitilde/.feb-sim/app/mac} (Finder:
+Cmd-Shift-G, paste the path) and choose Open.
 
 That was the one and only clone. Every later release arrives with \cmd{./feb update}.
 
