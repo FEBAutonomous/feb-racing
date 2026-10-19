@@ -43,42 +43,49 @@ submit posts a result & submit posts the results and your code \\
 
 \part{The box}
 
-\section{New member: setup}
+\section{Setup}
+
+Install these three, once:
 
 \begin{enumerate}
-  \item Install Docker Desktop (Mac, Windows; OrbStack also works on a Mac) or \cmd{docker.io}
-  (Linux), VS~Code with the \emph{Dev Containers} extension, and Foxglove from
-  \url{https://foxglove.dev/download}.
-  \item A folder for all FEB work, and the clone inside it:
-\begin{lstlisting}
-mkdir ~/FEB && cd ~/FEB
-git clone git@github.com:FEBAutonomous/feb-racing.git && cd feb-racing
-./feb setup --name "Your Name"
-\end{lstlisting}
-  \texttt{setup} pulls the image (a few GB, once), downloads the simulator app, creates your box.
-  \item \cmd{./feb up}: the simulator opens. Arrow keys drive. Close the window to stop.
+  \item \textbf{Docker.} Mac: Docker Desktop or OrbStack. Windows: Docker Desktop, with
+  \emph{WSL integration} turned on for your Ubuntu in its settings. Linux: \cmd{sudo apt install
+  docker.io}, add yourself to the \cmd{docker} group, log out and in.
+  \item \textbf{VS~Code} with the \emph{Dev Containers} extension. Cursor works the same way.
+  \item \textbf{Foxglove} from \url{https://foxglove.dev/download}. Optional; the browser desktop covers most of it.
 \end{enumerate}
 
-Windows: do all of this in a WSL~2 Ubuntu terminal with Docker Desktop's WSL integration on, and
-keep \file{\textasciitilde/FEB} inside WSL. Mac: keep it under \file{/Users}.
+Windows: everything below happens in a \textbf{WSL~2 Ubuntu terminal}, never PowerShell, and
+\file{\textasciitilde/FEB} stays inside WSL. No Ubuntu yet: \cmd{wsl -{}-install -d Ubuntu} in PowerShell,
+reboot, open ``Ubuntu'' from the Start menu. Mac: keep \file{\textasciitilde/FEB} under \file{/Users}.
 
-\section{Already had release 1}
-
-The repository's history was rewritten for release 2, so \cmd{git pull} in an old clone stops
-with \emph{refusing to merge unrelated histories}. Clone again, then carry your driver over:
+\textbf{Had the old devkit?} Release 2 rewrote the repository, so the old clone cannot be updated;
+delete it. If you wrote code in its \file{stack/} folder, copy that folder somewhere first and drop
+it into the new \file{stack/} after setup; it works again once it has a card (section~\ref{sec:package}).
 
 \begin{lstlisting}
-mv ~/feb-racing ~/feb-racing-old        # wherever the old clone is
+rm -rf ~/feb-racing            # wherever the old clone is; skip if you never had it
+\end{lstlisting}
+
+Then the setup itself:
+
+\begin{lstlisting}
 mkdir -p ~/FEB && cd ~/FEB
 git clone git@github.com:FEBAutonomous/feb-racing.git && cd feb-racing
-cp -r ~/feb-racing-old/stack/* stack/
 ./feb setup --name "Your Name"
 \end{lstlisting}
 
-The clone must sit in a folder of its own: the box mounts the folder that holds it. Your
-\file{stack/} keeps working. A node written against the old topics still drives in the simulator;
-to run on the car it needs the five topics of section~\ref{sec:contract}, about thirty lines for
-the gap follower.
+\texttt{setup} pulls the image (a few GB, once), downloads the simulator app for your OS, and
+creates your box. Your name is how results appear on the scoreboard; ask the lead to add it to
+\file{submissions.yaml} with your GitHub login. No SSH key on GitHub yet: use
+\cmd{https://github.com/FEBAutonomous/feb-racing.git} in the clone line.
+
+\textbf{First drive:} \cmd{./feb up}. The simulator opens, arrow keys drive, close the window to
+stop. \cmd{./feb up -{}-driver feb\_driver} races the starter driver instead. Mac, first time only:
+if macOS refuses to open the simulator, right-click the app in
+\file{\textasciitilde/Library/Application Support/feb-sim/app} and choose Open.
+
+This is a one-time clone. Every later release arrives with \cmd{./feb update}.
 
 \section{How it fits together}
 
@@ -140,9 +147,16 @@ with a reset or a new image; your files never do.
 Inside the box there is nothing of ours to learn: \cmd{ros2}, \cmd{colcon}, \cmd{pip},
 \cmd{ros2 bag record -a}, and \cmd{rviz2 \&} which lands on the browser desktop.
 
+\textbf{rviz in the browser.} With \cmd{./feb up} running in one terminal, in a second one:
+\cmd{./feb shell -{}-gui}, then \cmd{rviz2 \&}. A browser tab opens on the box's desktop and rviz
+appears there. Fixed Frame \cmd{odom}; Add, By topic, \cmd{/scan} (LaserScan, style Points, size 4)
+and \cmd{/odom}. A topic that stays empty wants Reliability Policy set to Best Effort.
+\textbf{Foxglove app:} Open connection, Foxglove WebSocket, \cmd{ws://localhost:8765}; the bridge
+runs whenever \cmd{feb up} does.
+
 \part{Drivers}
 
-\section{A driver is one package}
+\section{A driver is one package}\label{sec:package}
 
 Copy the template and rename it:
 
@@ -309,6 +323,11 @@ drive, are \file{docs/build-car.md}.
 \toprule
 Symptom & Fix \\
 \midrule
+\texttt{Cannot connect to the Docker daemon} & Docker Desktop is not running; open it, wait for the whale icon to settle \\
+\texttt{this clone sits directly in /home/...} & the clone needs a folder of its own: \cmd{mkdir \textasciitilde/FEB \&\& mv \textasciitilde/feb-racing \textasciitilde/FEB/} \\
+\texttt{unauthorized} while pulling the image & a stale \cmd{ghcr.io} login: \cmd{docker logout ghcr.io}, run setup again \\
+\texttt{refusing to merge unrelated histories} & you pulled in the old clone; delete it and clone again (Setup) \\
+\texttt{no driver.yaml with name '...'} & the package has no card, or its \cmd{name:} differs: section~\ref{sec:package} \\
 \texttt{ros2: command not found} & you are in a laptop terminal: \cmd{./feb shell} \\
 my node is not there & it did not build: \cmd{./feb logs -n 100}, or \cmd{colcon build} in the workspace and read it \\
 the simulator says not connected & the house nodes are still starting; \cmd{./feb logs -f} \\
