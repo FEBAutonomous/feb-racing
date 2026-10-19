@@ -45,29 +45,37 @@ submit posts a result & submit posts the results and your code \\
 
 \section{Setup}
 
-Install these three, once:
+\subsection*{1. Install, once}
 
-\begin{enumerate}
-  \item \textbf{Docker.} Mac: Docker Desktop or OrbStack. Windows: Docker Desktop, with
-  \emph{WSL integration} turned on for your Ubuntu in its settings. Linux: \cmd{sudo apt install
-  docker.io}, add yourself to the \cmd{docker} group, log out and in.
-  \item \textbf{VS~Code} with the \emph{Dev Containers} extension. Cursor works the same way.
-  \item \textbf{Foxglove} from \url{https://foxglove.dev/download}. Optional; the browser desktop covers most of it.
-\end{enumerate}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+ & Install \\
+\midrule
+Mac & Docker Desktop (or OrbStack). VS~Code with the \emph{Dev Containers} extension. Foxglove from \url{https://foxglove.dev/download}. \\
+Windows & \textbf{WSL~2 Ubuntu} first: in PowerShell \cmd{wsl -{}-install -d Ubuntu}, reboot, open ``Ubuntu'' from the Start menu. Then Docker Desktop, and in its Settings, Resources, \emph{WSL integration}, switch on Ubuntu. Then VS~Code with Dev Containers, and Foxglove. \\
+Linux & \cmd{sudo apt install docker.io}, \cmd{sudo usermod -aG docker \$USER}, log out and in. VS~Code with Dev Containers. Foxglove. \\
+\bottomrule
+\end{tabularx}
 
-Windows: everything below happens in a \textbf{WSL~2 Ubuntu terminal}, never PowerShell, and
-\file{\textasciitilde/FEB} stays inside WSL. No Ubuntu yet: \cmd{wsl -{}-install -d Ubuntu} in PowerShell,
-reboot, open ``Ubuntu'' from the Start menu. Mac: keep \file{\textasciitilde/FEB} under \file{/Users}.
+\medskip
+Where things live: Mac, under \file{/Users}, which \file{\textasciitilde/FEB} already is. Windows,
+\textbf{inside WSL}: every command in this guide is typed in the Ubuntu terminal, never PowerShell,
+and \file{\textasciitilde/FEB} is the Ubuntu home, not \file{C:}. Foxglove is optional everywhere;
+the browser desktop covers most of it.
 
-\textbf{Had the old devkit?} Release 2 rewrote the repository, so the old clone cannot be updated;
-delete it. If you wrote code in its \file{stack/} folder, copy that folder somewhere first and drop
-it into the new \file{stack/} after setup; it works again once it has a card (section~\ref{sec:package}).
+\subsection*{2. Had the old devkit? Delete it}
+
+Release 2 rewrote the repository, so the old clone cannot be updated. Delete it; skip this if
+you never had it.
 
 \begin{lstlisting}
-rm -rf ~/feb-racing            # wherever the old clone is; skip if you never had it
+rm -rf ~/feb-racing            # or wherever it is
 \end{lstlisting}
 
-Then the setup itself:
+Wrote code in its \file{stack/} folder? Copy that folder somewhere safe before deleting, and drop
+it into the new \file{stack/} after step~3. It runs again once it has a card (section~\ref{sec:package}).
+
+\subsection*{3. Clone and set up}
 
 \begin{lstlisting}
 mkdir -p ~/FEB && cd ~/FEB
@@ -76,16 +84,23 @@ git clone git@github.com:FEBAutonomous/feb-racing.git && cd feb-racing
 \end{lstlisting}
 
 \texttt{setup} pulls the image (a few GB, once), downloads the simulator app for your OS, and
-creates your box. Your name is how results appear on the scoreboard; ask the lead to add it to
-\file{submissions.yaml} with your GitHub login. No SSH key on GitHub yet: use
-\cmd{https://github.com/FEBAutonomous/feb-racing.git} in the clone line.
+creates your box. About twenty minutes, nearly all of it download. Your name is how results
+appear on the scoreboard; ask the lead to add it to \file{submissions.yaml} with your GitHub
+login. No SSH key on GitHub yet: use \cmd{https://github.com/FEBAutonomous/feb-racing.git} in the
+clone line.
 
-\textbf{First drive:} \cmd{./feb up}. The simulator opens, arrow keys drive, close the window to
-stop. \cmd{./feb up -{}-driver feb\_driver} races the starter driver instead. Mac, first time only:
-if macOS refuses to open the simulator, right-click the app in
-\file{\textasciitilde/Library/Application Support/feb-sim/app} and choose Open.
+\subsection*{4. First drive}
 
-This is a one-time clone. Every later release arrives with \cmd{./feb update}.
+\begin{lstlisting}
+./feb up
+\end{lstlisting}
+
+The simulator opens. Arrow keys drive. Close the window to stop. \cmd{./feb up -{}-driver
+feb\_driver} races the starter driver instead. Mac, first time only: if macOS refuses to open the
+simulator, right-click the app in \file{\textasciitilde/Library/Application Support/feb-sim/app} and
+choose Open.
+
+That was the one and only clone. Every later release arrives with \cmd{./feb update}.
 
 \section{How it fits together}
 
