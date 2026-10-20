@@ -52,11 +52,11 @@ scan_rotate:
 
 supervisor:
   ros__parameters:
-    # the 8BitDo Ultimate 2C through its 2.4 GHz dongle as the kernel's xpad driver sees it (usb 2dc8:301c):
-    # LB 6, RB 9, minus 7; left stick up/down axis 1, right stick left/right axis 2.
+    # the 8BitDo Ultimate 2C through its 2.4 GHz dongle as the kernel's xpad driver sees it (usb 2dc8:301c),
+    # measured 2026-10-19: LB 6, RB 7, minus 10; left stick up/down axis 1, right stick left/right axis 2.
     # In its other mode (usb 2dc8:310a) it is LB 4, RB 5, Back 6, steer axis 3: do not press the X/B/A+Home combos.
     manual_button: 6
-    auto_button: 9
-    stop_button: 7
+    auto_button: 7
+    stop_button: 10
     speed_axis: 1
     steer_axis: 2
