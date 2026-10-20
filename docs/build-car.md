@@ -195,6 +195,18 @@ The Jetson is flashed and set up. What it is, so whoever picks it up knows:
 - **The box:** `cd ~/FEB/feb-racing && ./feb setup`, once the arm64 image is published by CI.
   On a car the box gets `/dev` passed in, and `feb up` defaults to the `feb-stack` workspace.
 
+- **First drive done 2026-10-18** (Jacobs, bench and floor): VESC detected in VESC Tool (FOC, Medium
+  Outrunner preset, 3S 6000 mAh, motor direction inverted, App = No App, servo output on). Manual
+  drive at the 0.8 m/s cap, steering full range. The start-up stutter is the sensorless dead zone.
+- **Lidar yaw.** The S2 sits turned 90 degrees (cable out the side). `scan_rotate` in `feb_tools`
+  re-labels the scan so `/scan`'s zero is the nose; the number is `lidar_yaw` in
+  `config/car.yaml`. Check: a hand in front of the nose reads 0 in `/scan`.
+- **Gamepad modes.** The 8BitDo Ultimate 2C has two layouts depending on its mode (usb id
+  `2dc8:301c`: LB 6, RB 9, minus 7, steer axis 2; `2dc8:310a`: LB 4, RB 5, Back 6, steer axis 3).
+  `car.yaml` holds the 301c layout under `supervisor:`. Do not press the X/B/A+Home combos. Turn the
+  pad on *before* `feb up`; if it re-pairs while the stack runs, restart the stack.
+- **Lidar view.** 315 degrees clear; the Jetson blocks a 45-degree slice straight behind the sensor.
+
 Still to do, on the bench, wheels in the air:
 
 1. **VESC Tool** on a laptop, VESC on USB, battery plugged in (the first time): update

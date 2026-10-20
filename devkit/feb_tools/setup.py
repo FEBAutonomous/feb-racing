@@ -23,5 +23,6 @@ setup(
     entry_points={"console_scripts": ["sensor_noise = feb_tools.sensor_noise:main",
                                       "house_driver = feb_tools.house_driver:main",
                                       "sim_adapter = feb_tools.sim_adapter:main",
-                                      "key_joy = feb_tools.key_joy:main"]},
+                                      "key_joy = feb_tools.key_joy:main",
+                                      "scan_rotate = feb_tools.scan_rotate:main"]},
 )

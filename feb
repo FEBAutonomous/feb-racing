@@ -397,6 +397,8 @@ def driver_command(args):
 
 
 def cmd_up(args):
+    if args.car:
+        args.no_sim = True          # the car is the simulator's replacement, not its companion
     if args.driver:
         args.stack, cap = driver_command(args)
         if args.max_speed is None and cap is not None:

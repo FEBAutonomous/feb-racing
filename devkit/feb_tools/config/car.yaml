@@ -45,3 +45,18 @@ joy:
     deadzone: 0.05
     autorepeat_rate: 20.0
     coalesce_interval: 0.01
+
+scan_rotate:
+  ros__parameters:
+    lidar_yaw: 1.5708              # the S2 sits turned 90 deg (cable out the side); car angle = lidar angle + this. Hand test: a hand in front of the nose reads 0.
+
+supervisor:
+  ros__parameters:
+    # the 8BitDo Ultimate 2C through its 2.4 GHz dongle as the kernel's xpad driver sees it (usb 2dc8:301c):
+    # LB 6, RB 9, minus 7; left stick up/down axis 1, right stick left/right axis 2.
+    # In its other mode (usb 2dc8:310a) it is LB 4, RB 5, Back 6, steer axis 3: do not press the X/B/A+Home combos.
+    manual_button: 6
+    auto_button: 9
+    stop_button: 7
+    speed_axis: 1
+    steer_axis: 2
