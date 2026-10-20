@@ -7,6 +7,7 @@
 #   the box:           box.sh as the main process, user `feb`, persistent, ~/FEB mounted (see ../feb-sim)
 FROM ros:humble
 ARG DEBIAN_FRONTEND=noninteractive
+ARG APT_LAYER=2026-10-19   # bump to rebuild the apt layer from scratch: a cached emulated-arm64 layer once came out missing librclcpp
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip sudo git nano less curl ca-certificates gnupg iproute2 \
@@ -19,7 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-joy \
         ros-humble-rplidar-ros \
         ros-humble-serial-driver ros-humble-asio-cmake-module ros-humble-io-context \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && test -f /opt/ros/humble/lib/librclcpp.so    # a broken ROS install fails here, not three layers later
 
 # node + the Claude Code CLI, so an assistant can run inside the box with the ROS tools
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
