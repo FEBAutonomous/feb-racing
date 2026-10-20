@@ -5,34 +5,65 @@ on:
     paths: [devkit/**, .github/workflows/devkit.yml]
   workflow_dispatch:
 permissions: { contents: read, packages: write }
+
+# Each architecture builds on its own native runner (no QEMU: emulated arm64 apt/colcon runs were
+# flaky), pushes both images by digest, then one job stitches the digests into the :latest and
+# :gui multi-arch tags.
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux/amd64, runner: ubuntu-24.04 }
+          - { platform: linux/arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-        with: { image: tonistiigi/binfmt:qemu-v9.2.2 }   # older QEMU segfaults in glibc's post-install on arm64
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
-      - id: owner
-        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - id: vars
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          p="${{ matrix.platform }}"; echo "arch=${p#linux/}" >> "$GITHUB_OUTPUT"
+      - id: base
+        uses: docker/build-push-action@v6
         with:
           context: devkit
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/${{ steps.owner.outputs.owner }}/feb-devkit:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      # the gui tag: the image just pushed plus ros-humble-desktop and a desktop served as a web
-      # page (feb shell --gui). Built second because its Dockerfile starts FROM :latest.
-      - uses: docker/build-push-action@v6
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/${{ steps.vars.outputs.owner }}/feb-devkit,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=base-${{ steps.vars.outputs.arch }}
+          cache-to: type=gha,mode=max,scope=base-${{ steps.vars.outputs.arch }}
+      - id: gui
+        uses: docker/build-push-action@v6
         with:
           context: devkit
           file: devkit/Dockerfile.gui
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/${{ steps.owner.outputs.owner }}/feb-devkit:gui
-          cache-from: type=gha,scope=gui
-          cache-to: type=gha,mode=max,scope=gui
+          platforms: ${{ matrix.platform }}
+          build-args: BASE=ghcr.io/${{ steps.vars.outputs.owner }}/feb-devkit@${{ steps.base.outputs.digest }}
+          outputs: type=image,name=ghcr.io/${{ steps.vars.outputs.owner }}/feb-devkit,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=gui-${{ steps.vars.outputs.arch }}
+          cache-to: type=gha,mode=max,scope=gui-${{ steps.vars.outputs.arch }}
+      - run: |
+          mkdir -p digests
+          echo "${{ steps.base.outputs.digest }}" > digests/base-${{ steps.vars.outputs.arch }}
+          echo "${{ steps.gui.outputs.digest }}" > digests/gui-${{ steps.vars.outputs.arch }}
+      - uses: actions/upload-artifact@v4
+        with: { name: "digests-${{ steps.vars.outputs.arch }}", path: digests/*, if-no-files-found: error, retention-days: 1 }
+
+  merge:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: digests, pattern: "digests-*", merge-multiple: true }
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"; img="ghcr.io/$owner/feb-devkit"
+          ls digests
+          docker buildx imagetools create -t "$img:latest" "$img@$(cat digests/base-amd64)" "$img@$(cat digests/base-arm64)"
+          docker buildx imagetools create -t "$img:gui"    "$img@$(cat digests/gui-amd64)"  "$img@$(cat digests/gui-arm64)"
+          docker buildx imagetools inspect "$img:gui" | grep -E "Platform|Name:" | head -6
