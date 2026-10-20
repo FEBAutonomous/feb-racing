@@ -318,13 +318,34 @@ teammate's merged driver in your simulator: \cmd{./feb up -{}-ws \textasciitilde
 \section{From a merged driver to the wheels}
 
 The Jetson on the car has the same box, the same \file{\textasciitilde/FEB} folder, and the pad's
-dongle. Whoever runs the car, over ssh:
+dongle. Nothing on a laptop or on GitHub is needed to drive; the laptop is only a terminal.
+
+\textbf{Start-up.} Gamepad on \emph{first}, then battery in, SW1 on, a minute for the Jetson to boot.
+Then a terminal on it, whichever fits:
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Where & How \\
+\midrule
+no internet (track, corridor) & 45 s after boot the car is Wi-Fi network \texttt{feb-car}, password \texttt{febautonomous}; join it, then \cmd{ssh feb@10.42.0.1} \\
+a known Wi-Fi around & the car joins it; \cmd{ssh feb@feb-car} from any laptop on the team tailnet, or its address on that network \\
+a USB-C cable to the Jetson & \cmd{ssh feb@192.168.55.1} \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+Password \texttt{feb}. Then:
 
 \begin{lstlisting}
 cd ~/FEB/feb-stack && git pull
 cd ~/FEB/feb-racing
 ./feb up --car --driver my_driver --mode-name inspection
 \end{lstlisting}
+
+Wait for \emph{Connected to VESC} and \emph{Opened joystick} in the output. If the pad came on
+after that, Ctrl-C and run it again: the joystick node only looks once. Ctrl-C ends the run, and
+so does losing the ssh connection, which is the safe way round; for a long demo put \cmd{nohup}
+in front and \cmd{\&} at the end, the bumper still stops the car.
 
 On the car the workspace is \file{feb-stack} by default, so every merged driver is built and the
 named one launches: the VESC, lidar and gamepad drivers instead of the simulator, the supervisor
