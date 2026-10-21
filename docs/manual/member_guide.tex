@@ -179,11 +179,18 @@ runs whenever \cmd{feb up} does.
 
 \section{A driver is one package}\label{sec:package}
 
-Copy the template and rename it:
+Copy the template and rename it, inside as well as outside; a ROS package carries its name in
+four places, so the last two lines do the renaming for you:
 
 \begin{lstlisting}
-cp -r starter_kit/feb_driver stack/my_driver
+cp -r starter_kit/feb_driver stack/my_driver && cd stack/my_driver
+mv feb_driver my_driver && mv resource/feb_driver resource/my_driver
+grep -rl feb_driver . | xargs sed -i 's/feb_driver/my_driver/g'
+cd ../..
 \end{lstlisting}
+
+Mac: \cmd{sed -i ''} with the empty quotes, or run those lines inside \cmd{./feb shell}, whose
+\cmd{sed} is the Linux one. Then \cmd{./feb up -{}-driver my\_driver} builds and races it.
 
 \begin{tabularx}{\linewidth}{lX}
 \toprule
