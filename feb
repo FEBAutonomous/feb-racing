@@ -102,10 +102,7 @@ def cmd_setup(args):
     if not shutil.which("docker"):
         fail("Docker is not installed. Install Docker Desktop (Mac/Windows) or docker.io (Linux) first.")
     subprocess.run(["docker", "pull", GUI_IMAGE], check=True)
-    if app_executable():
-        print(f"simulator app present: {app_executable()}")
-    else:
-        install_app()
+    ensure_app()
     check_foxglove()
     ensure_box()
     write_attach_config()
@@ -181,6 +178,22 @@ def install_app(stamp=None):
     exe.chmod(0o755)
     STAMP.write_text(json.dumps({"updated_at": stamp or latest_release_stamp() or ""}))
     print(f"simulator app installed: {exe}")
+
+
+def ensure_app():
+    """The simulator app for this OS, at the current release: installed if missing, replaced if it
+    is from an older release (a release 1 leftover cannot talk to the practice runner)."""
+    exe = app_executable()
+    if exe and sim.platform_dir().is_symlink():
+        print(f"simulator app linked to a build folder, kept: {exe}")      # the organiser PC
+        return
+    latest = latest_release_stamp()
+    if exe and (latest is None or latest == installed_release_stamp()):
+        print(f"simulator app present: {exe}")
+        return
+    if exe:
+        print(f"simulator app is from an older release ({installed_release_stamp() or 'unknown'}): replacing it")
+    install_app(latest)
 
 
 def app_update_hint():
@@ -656,7 +669,11 @@ def cmd_practice(args):
         for name, r, _ in done:
             print("%-20s %-9s %5s %5s %9s" % (name, r["status"], r["laps_completed"], r["collisions"], r["total_s"] or "-"))
     clean = [d for _, r, d in done if r["status"] == "finished" and r["collisions"] == 0]
-    print(f"\n{len(clean)} of {len(done)} clean (finished, no collisions). Post them with: ./feb submit")
+    if clean:
+        print(f"\n{len(clean)} of {len(done)} clean (finished, no collisions). Post them with: ./feb submit")
+    else:
+        print(f"\nnone of {len(done)} clean (finished, no collisions): nothing to post. `feb logs`, or the run folder's sim.log and container.log, say why")
+        sys.exit(1)
 
 
 def unsubmitted_runs(team, include_all=False):
