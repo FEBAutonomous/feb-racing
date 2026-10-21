@@ -371,12 +371,27 @@ def read_manifest(ws, name):
           inspection: {launch: drive.launch.py, max_speed: 0.8}
         default_mode: trackdrive
     """
-    import yaml
     for candidate in pathlib.Path(ws).rglob("driver.yaml"):
-        m = yaml.safe_load(candidate.read_text()) or {}
+        m = load_yaml(candidate) or {}
         if m.get("name") == name:
             return m, candidate.parent
     fail(f"no driver.yaml with name '{name}' under {ws}")
+
+
+def load_yaml(path):
+    """Parse a yaml file with the laptop's PyYAML if it has one, else with the box's: a stock Mac
+    or Windows Python has no PyYAML, and the launcher must not ask members to install anything."""
+    try:
+        import yaml
+        return yaml.safe_load(pathlib.Path(path).read_text())
+    except ImportError:
+        ensure_box()
+        out = subprocess.run(["docker", "exec", "-u", "feb", BOX, "python3", "-c",
+                              "import sys, json, yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1]))))", in_box(path)],
+                             capture_output=True, text=True)
+        if out.returncode != 0:
+            fail(f"could not read {path}: {out.stderr.strip()}")
+        return json.loads(out.stdout)
 
 
 def driver_command(args):
