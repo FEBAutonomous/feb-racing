@@ -331,11 +331,24 @@ def cmd_code(args):
     ensure_box()
     write_attach_config()
     editor = "cursor" if args.cursor else "code"
-    if not shutil.which(editor):
-        fail(f"{editor} is not on the PATH. In VS Code: Remote Explorer -> Dev Containers -> {BOX} -> Attach, folder {ROOT_IN}")
+    exe = shutil.which(editor) or editor_binary(editor)
+    if not exe:
+        fail(f"{editor} is not on the PATH and the app was not found. In VS Code: Remote Explorer -> Dev Containers -> {BOX} -> Attach, folder {ROOT_IN}")
     uri = f"vscode-remote://attached-container+{BOX.encode().hex()}{ROOT_IN}"
-    subprocess.Popen([editor, "--folder-uri", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen([exe, "--folder-uri", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f"{editor} attached to {BOX} at {ROOT_IN}")
+
+
+def editor_binary(editor):
+    """The editor's own command-line binary when `code`/`cursor` is not on the PATH: a Mac only gets
+    it after "Shell Command: Install 'code' command in PATH", Windows after a reinstall tick."""
+    home = pathlib.Path.home()
+    app = {"code": "Visual Studio Code", "cursor": "Cursor"}[editor]
+    candidates = [pathlib.Path("/Applications") / f"{app}.app" / "Contents" / "Resources" / "app" / "bin" / editor,
+                  home / "Applications" / f"{app}.app" / "Contents" / "Resources" / "app" / "bin" / editor,
+                  pathlib.Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / ("Microsoft VS Code" if editor == "code" else "cursor") / "bin" / f"{editor}.cmd",
+                  pathlib.Path("/usr/share/code/bin/code"), pathlib.Path("/snap/bin/code")]
+    return next((str(c) for c in candidates if c.exists()), None)
 
 
 def write_attach_config():
