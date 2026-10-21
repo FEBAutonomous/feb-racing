@@ -25,6 +25,7 @@ from sensor_msgs.msg import Joy
 from std_msgs.msg import String
 
 HOLD = 0.35                       # s, how long after the last repeat a key still counts as held
+FIRST_HOLD = 0.8                  # s, the grace after a fresh press: the OS waits ~0.5 s before it starts repeating
 LB, RB, STOP = 4, 5, 6            # the supervisor's defaults
 SPEED_AXIS, STEER_AXIS = 1, 3
 
@@ -35,7 +36,8 @@ class KeyJoy(Node):
         self.pub = self.create_publisher(Joy, "/joy", 10)
         self.create_subscription(String, "/feb/state", lambda m: setattr(self, "state", m.data), 10)
         self.state = "?"
-        self.last = {}                # key -> time last seen
+        self.last = {}
+        self.grace = {}                # key -> how long after that it still counts as held
         self.quit = False
         self.fd = sys.stdin.fileno()
         self.old = termios.tcgetattr(self.fd)
@@ -52,10 +54,12 @@ class KeyJoy(Node):
             for key, names in ((" ", "space"), ("m", "m"), ("M", "m"), ("x", "x"), ("X", "x"),
                                ("\x1b[A", "up"), ("\x1b[B", "down"), ("\x1b[C", "right"), ("\x1b[D", "left")):
                 if key in ch:
+                    fresh = not self.held(names)            # a press after a pause, not a repeat
                     self.last[names] = now
+                    self.grace[names] = FIRST_HOLD if fresh else HOLD
 
     def held(self, name):
-        return time.monotonic() - self.last.get(name, -1e9) < HOLD
+        return time.monotonic() - self.last.get(name, -1e9) < self.grace.get(name, HOLD)
 
     def tick(self):
         self.read_keys()
