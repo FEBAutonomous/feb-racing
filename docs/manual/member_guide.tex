@@ -100,7 +100,8 @@ login.
 ./feb up
 \end{lstlisting}
 
-The simulator opens. Arrow keys drive. Close the window to stop. \cmd{./feb up -{}-driver
+The simulator opens, and Foxglove with it if it is installed. Arrow keys drive. Close the
+simulator window to stop. \cmd{./feb up -{}-driver
 feb\_driver} races the starter driver instead. Mac, first time only: if macOS refuses to open the
 simulator, right-click \file{FEB Simulator.app} in \file{\textasciitilde/.feb-sim/app/mac} (Finder:
 Cmd-Shift-G, paste the path) and choose Open.
@@ -168,8 +169,8 @@ Inside the box there is nothing of ours to learn: \cmd{ros2}, \cmd{colcon}, \cmd
 \cmd{ros2 bag record -a}, and \cmd{rviz2 \&} which lands on the browser desktop.
 
 \textbf{rviz in the browser.} With \cmd{./feb up} running in one terminal, in a second one:
-\cmd{./feb shell -{}-gui}, then \cmd{rviz2 \&}. A browser tab opens on the box's desktop and rviz
-appears there. Fixed Frame \cmd{odom}; Add, By topic, \cmd{/scan} (LaserScan, style Points, size 4)
+\cmd{./feb shell -{}-gui}: a browser tab opens on the box's desktop, empty for now. In that
+terminal \cmd{rviz2 \&}, and rviz appears on the desktop. Fixed Frame \cmd{odom}; Add, By topic, \cmd{/scan} (LaserScan, style Points, size 4)
 and \cmd{/odom}. A topic that stays empty wants Reliability Policy set to Best Effort.
 \textbf{Foxglove app:} Open connection, Foxglove WebSocket, \cmd{ws://localhost:8765}; the bridge
 runs whenever \cmd{feb up} does.
