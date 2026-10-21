@@ -51,13 +51,17 @@ submit posts a result & submit posts the results and your code \\
 \toprule
  & Install \\
 \midrule
-Mac & Docker Desktop (or OrbStack). VS~Code with the \emph{Dev Containers} extension. Foxglove from \url{https://foxglove.dev/download}. \\
-Windows & \textbf{WSL~2 Ubuntu} first: in PowerShell \cmd{wsl -{}-install -d Ubuntu}, reboot, open ``Ubuntu'' from the Start menu. Then Docker Desktop, and in its Settings, Resources, \emph{WSL integration}, switch on Ubuntu. Then VS~Code with Dev Containers, and Foxglove. \\
+Mac & Docker Desktop (or OrbStack). VS~Code, then its Extensions view, search \emph{Dev Containers}, Install. Foxglove from \url{https://foxglove.dev/download}. \\
+Windows & \textbf{WSL~2 Ubuntu} first: in PowerShell \cmd{wsl -{}-install -d Ubuntu}, reboot, open ``Ubuntu'' from the Start menu. Then Docker Desktop, and in its Settings, Resources, \emph{WSL integration}, switch on Ubuntu. Then VS~Code with the Dev Containers extension (Extensions view, search, Install), and Foxglove. \\
 Linux & \cmd{sudo apt install docker.io}, \cmd{sudo usermod -aG docker \$USER}, log out and in. VS~Code with Dev Containers. Foxglove. \\
 \bottomrule
 \end{tabularx}
 
 \medskip
+And one GitHub thing: an SSH key on your account (GitHub: Settings, SSH and GPG keys; \cmd{ssh-keygen}
+makes one if you have none). The clone below and \cmd{feb submit} use it. Without one, clone with
+\cmd{https://github.com/FEBAutonomous/feb-racing.git} instead and add the key before you submit.
+
 Where things live: Mac, under \file{/Users}, which \file{\textasciitilde/FEB} already is. Windows,
 \textbf{inside WSL}: every command in this guide is typed in the Ubuntu terminal, never PowerShell,
 and \file{\textasciitilde/FEB} is the Ubuntu home, not \file{C:}. The simulator then runs as a Linux
@@ -88,8 +92,7 @@ git clone git@github.com:FEBAutonomous/feb-racing.git && cd feb-racing
 \texttt{setup} pulls the image (a few GB, once), downloads the simulator app for your OS, and
 creates your box. About twenty minutes, nearly all of it download. Your name is how results
 appear on the scoreboard; ask the lead to add it to \file{submissions.yaml} with your GitHub
-login. No SSH key on GitHub yet: use \cmd{https://github.com/FEBAutonomous/feb-racing.git} in the
-clone line.
+login.
 
 \subsection*{4. First drive}
 
