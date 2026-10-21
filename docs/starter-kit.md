@@ -13,8 +13,7 @@ cp -r starter_kit/feb_driver stack/     # your copy; stack/ is mounted into the 
 ./feb up --stack "ros2 launch feb_driver drive.launch.py"   # the starter driver
 ```
 
-Requirements: Docker Desktop (Mac/Windows) or docker.io (Linux), Python 3, the GitHub CLI for
-`feb submit`, and [Foxglove](https://foxglove.dev/download) (sign in once) to see your car's data. Your code stays on your laptop and is built in the box by `feb up` (`docs/devkit.md`).
+Requirements: Docker Desktop (Mac/Windows) or docker.io (Linux), Python 3, and [Foxglove](https://foxglove.dev/download) (sign in once) to see your car's data. Your code stays on your laptop and is built in the box by `feb up` (`docs/devkit.md`).
 
 The MPC racer, `feb_cone_racer`, is on the same contract but is sim-only for now: it drives clean
 at the simulator's full rate and not yet at the 10 Hz scoring rate, so it is not released.

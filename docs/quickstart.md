@@ -37,10 +37,13 @@ do steps 2 and 3 above, then copy your old `stack/` contents into the new `stack
 ## Your driver
 
 ```
-cp -r starter_kit/feb_driver stack/my_driver
+cp -r starter_kit/feb_driver stack/my_driver && cd stack/my_driver
+mv feb_driver my_driver && mv resource/feb_driver resource/my_driver
+grep -rl feb_driver . | xargs sed -i 's/feb_driver/my_driver/g'      # Mac: sed -i '' ..., or do it in ./feb shell
+cd ../..
 ```
 
-Rename what's inside and edit. One package is a whole driver:
+A ROS package carries its name in four places, hence the two rename lines. Then edit. One package is a whole driver:
 
 - `driver.yaml`: its name, kind (walls or cones), modes (launch file plus speed cap), and
   `packages:`, the list of your own packages it needs.
