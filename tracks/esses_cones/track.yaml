@@ -1,6 +1,6 @@
 name: FEB Esses (cones)
 category: feb_cones
-direction: ccw
+direction: cw
 checkpoints: 24
 cones:
   spacing: 1.2

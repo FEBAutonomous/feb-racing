@@ -1,5 +1,5 @@
 name: FEB Circuit (cones)
-direction: ccw
+direction: cw
 checkpoints: 30
 start:
 - 12

@@ -1,6 +1,6 @@
 name: Interlagos (1:10, cones)
 category: f1_cones
-direction: ccw
+direction: cw
 checkpoints: 40
 qualifying: false
 resolution: 0.05
