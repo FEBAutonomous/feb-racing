@@ -199,9 +199,8 @@ The Jetson is flashed and set up. What it is, so whoever picks it up knows:
   Outrunner preset, 3S 6000 mAh, motor direction inverted, App = No App, servo output on). Manual
   drive at the 0.8 m/s cap, steering full range. The start-up stutter is the sensorless dead zone.
 - **Running it.** `cd ~/FEB/feb-racing && ./feb up --car --no-foxglove --driver feb_driver
-  --mode-name inspection --ws ~/FEB/feb-racing/starter_kit`. The `--ws` points at the starter kit
-  because `feb-stack`, the car's default workspace, holds no drivers until `feb submit` has run;
-  after that the `--ws` goes away. Pad on before `feb up`.
+  --mode-name inspection`. A driver that is not in `feb-stack` (the car's default workspace) is
+  looked for in the starter kit next, so this works before any `feb submit`. Pad on before `feb up`.
 - **Lidar yaw.** The S2 sits turned 90 degrees (cable out the side). `scan_rotate` in `feb_tools`
   re-labels the scan so `/scan`'s zero is the nose; the number is `lidar_yaw` in
   `config/car.yaml`. Check: a hand in front of the nose reads 0 in `/scan`.

@@ -359,9 +359,9 @@ so does losing the ssh connection, which is the safe way round; for a long demo 
 in front and \cmd{\&} at the end, the bumper still stops the car.
 
 On the car the workspace is \file{feb-stack} by default, so every merged driver is built and the
-named one launches. A driver that is not merged yet, the starter kit for instance, runs from its
-own folder with \cmd{-{}-ws}: \cmd{./feb up -{}-car -{}-driver feb\_driver -{}-mode-name inspection
--{}-ws \textasciitilde/FEB/feb-racing/starter\_kit}. Either way the launch is the same: the VESC, lidar and gamepad drivers instead of the simulator, the supervisor
+named one launches. A driver that is nowhere in the workspace is looked for in the starter kit next,
+so \cmd{./feb up -{}-car -{}-driver feb\_driver -{}-mode-name inspection} works on a car with no
+merged drivers yet; \cmd{-{}-ws FOLDER} points at any other workspace. Either way the launch is the same: the VESC, lidar and gamepad drivers instead of the simulator, the supervisor
 with the dead-man required and the mode's cap, then your launch file with your car yaml on top.
 LB held, a human drives; RB held, your code drives; let go, it stops. Foxglove on a laptop at
 \texttt{ws://<the car>:8765} shows the same panels as in the simulator. First drive in
@@ -378,7 +378,7 @@ Symptom & Fix \\
 \texttt{this clone sits directly in /home/...} & the clone needs a folder of its own: \cmd{mkdir \textasciitilde/FEB \&\& mv \textasciitilde/feb-racing \textasciitilde/FEB/} \\
 \texttt{unauthorized} while pulling the image & a stale \cmd{ghcr.io} login: \cmd{docker logout ghcr.io}, run setup again \\
 \texttt{refusing to merge unrelated histories} & you pulled in the old clone; delete it and clone again (Setup) \\
-\texttt{no driver.yaml with name '...'} & the package has no card, or its \cmd{name:} differs: section~\ref{sec:package} \\
+\texttt{no driver.yaml with name '...'} & no card with that \cmd{name:} in \file{stack/} or the starter kit: section~\ref{sec:package} \\
 \texttt{ros2: command not found} & you are in a laptop terminal: \cmd{./feb shell} \\
 my node is not there & it did not build: \cmd{./feb logs -n 100}, or \cmd{colcon build} in the workspace and read it \\
 the simulator says not connected & the house nodes are still starting; \cmd{./feb logs -f} \\

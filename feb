@@ -394,9 +394,21 @@ def load_yaml(path):
         return json.loads(out.stdout)
 
 
+def driver_ws(args):
+    """The workspace a --driver is built from: --ws if given, else the first of the default workspace
+    and the starter kit that holds a card with that name. Sets args.ws so the build uses the same one."""
+    if args.ws:
+        return pathlib.Path(args.ws)
+    for ws in (default_ws(), ROOT / "starter_kit"):
+        if any(m.get("name") == args.driver for m in (load_yaml(c) or {} for c in ws.rglob("driver.yaml")) if m):
+            args.ws = str(ws)
+            return ws
+    return default_ws()                     # read_manifest fails there with the clear message
+
+
 def driver_command(args):
     """--driver NAME [--mode M] -> the stack command and the speed cap from its manifest."""
-    ws = pathlib.Path(args.ws) if args.ws else default_ws()
+    ws = driver_ws(args)
     manifest, folder = read_manifest(ws, args.driver)
     modes = manifest.get("modes") or {}
     mode = args.mode_name or manifest.get("default_mode") or (next(iter(modes)) if modes else None)
@@ -602,7 +614,7 @@ def cmd_practice(args):
     kind = "all"
     if args.driver:
         args.stack, _ = driver_command(args)
-        kind = read_manifest(pathlib.Path(args.ws) if args.ws else default_ws(), args.driver)[0].get("kind", "any")
+        kind = read_manifest(driver_ws(args), args.driver)[0].get("kind", "any")
     exe = app_executable()
     if exe is None:
         fail("simulator app not found; run `feb setup` or set FEB_SIM_APP")
