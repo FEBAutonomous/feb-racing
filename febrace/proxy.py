@@ -24,8 +24,9 @@ COMMANDS = ("Throttle", "Steering", "Reset")
 
 
 class Proxy:
-    def __init__(self, devkit_ports, verbose=False, rate=0.0):
+    def __init__(self, devkit_ports, verbose=False, rate=0.0, host="127.0.0.1"):
         self.ports = devkit_ports
+        self.host = host
         self.verbose = verbose
         self.rate = rate            # Hz forwarded to the devkits (0 = every simulator message)
         self.next_forward = 0.0
@@ -44,7 +45,7 @@ class Proxy:
         deadline = time.time() + timeout
         while True:
             try:
-                client.connect(f"http://127.0.0.1:{port}", transports=["websocket"])
+                client.connect(f"http://{self.host}:{port}", transports=["websocket"])
                 break
             except socketio.exceptions.ConnectionError:
                 if time.time() > deadline:
@@ -100,8 +101,9 @@ def main():
     ap.add_argument("--devkits", type=int, nargs="+", required=True, help="devkit bridge ports, car 1 first")
     ap.add_argument("--verbose", action="store_true", help="log the merged commands now and then")
     ap.add_argument("--rate", type=float, default=0.0, help="Hz delivered to the devkits, e.g. 10 (0 = unlimited)")
+    ap.add_argument("--host", default="127.0.0.1", help="where the devkit ports are, as seen from this proxy")
     args = ap.parse_args()
-    Proxy(args.devkits, args.verbose, args.rate).serve(args.port)
+    Proxy(args.devkits, args.verbose, args.rate, args.host).serve(args.port)
 
 
 if __name__ == "__main__":

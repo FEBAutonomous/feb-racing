@@ -86,9 +86,14 @@ class Attempt:
     def _start_rate_proxy(self):
         """The simulator talks to a proxy that feeds the container at BRIDGE_RATE, so a headless
         run on a fast PC scores the same way as a laptop with a window."""
-        subprocess.run(["docker", "run", "-d", "--rm", "--name", self.proxy, "--network=host",
+        # the proxy's port is published, not host networking: Docker Desktop keeps host networking inside
+        # its VM, so a Mac's simulator could never reach it. The proxy reaches the devkit container's
+        # published port through the laptop's gateway address.
+        subprocess.run(["docker", "run", "-d", "--rm", "--name", self.proxy, "-p", f"{self.proxy_port}:{self.proxy_port}",
+                        "--add-host", "host.docker.internal:host-gateway",
                         "-v", f"{PROXY}:/tmp/proxy.py:ro", "--entrypoint", "python3", PROXY_IMAGE, "-u", "/tmp/proxy.py",
-                        "--port", str(self.proxy_port), "--devkits", str(self.port), "--rate", str(BRIDGE_RATE)],
+                        "--port", str(self.proxy_port), "--devkits", str(self.port), "--rate", str(BRIDGE_RATE),
+                        "--host", "host.docker.internal"],
                        check=True, stdout=subprocess.DEVNULL)
         time.sleep(3)
 

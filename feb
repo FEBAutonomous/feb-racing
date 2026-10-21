@@ -565,9 +565,11 @@ def start_opponent(level, track):
                     "-v", f"{track}:/track:ro", "-v", f"{ROOT / 'starter_kit'}:/home/autodrive_devkit/src/stack:ro",
                     "-e", f"FEB_LAUNCH={launch}", IMAGE], check=True, stdout=subprocess.DEVNULL)
     proxy = ROOT / "febrace" / "proxy.py"
-    subprocess.run(["docker", "run", "-d", "--rm", "--name", PROXY, "--network=host", "-v", f"{proxy}:/tmp/proxy.py:ro",
+    subprocess.run(["docker", "run", "-d", "--rm", "--name", PROXY, "-p", f"{PROXY_PORT}:{PROXY_PORT}",
+                    "--add-host", "host.docker.internal:host-gateway",         # no host networking: Docker Desktop keeps it in its VM
+                    "-v", f"{proxy}:/tmp/proxy.py:ro",
                     "--entrypoint", "python3", IMAGE, "-u", "/tmp/proxy.py", "--verbose", "--port", str(PROXY_PORT),
-                    "--devkits", str(PORT), str(OPPONENT_PORT), "--rate", "10"], check=True, stdout=subprocess.DEVNULL)
+                    "--devkits", str(PORT), str(OPPONENT_PORT), "--rate", "10", "--host", "host.docker.internal"], check=True, stdout=subprocess.DEVNULL)
     print(f"opponent: {'map-following' if level == 'map' else 'lidar'} house racer at {speed} m/s")
 
 
