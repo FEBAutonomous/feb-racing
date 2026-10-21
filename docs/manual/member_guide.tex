@@ -157,10 +157,10 @@ with a reset or a new image; your files never do.
 ./feb up -{}-deadman -{}-driver NAME & the car's rules in the simulator (section~\ref{sec:deadman}) \\
 ./feb stop & ends \texttt{feb up} from another terminal; the box stays \\
 ./feb logs -f & what \texttt{feb up} printed \\
-./feb practice -{}-driver NAME & scored runs on every practice track of the driver's kind \\
+./feb practice -{}-driver NAME & scored runs on every practice track of the driver's kind; the first run pulls the league image, a few GB \\
 ./feb submit & results to the scoreboard, code to the team repo, one pull request each \\
-./feb update & git pull, newer image (replaces the box), newer simulator \\
-./feb reset & a fresh box; your files are untouched \\
+./feb update & git pull, newer image, newer simulator; a new image removes the box, and the next command makes a fresh one \\
+./feb reset & removes the box; the next command makes a fresh one in half a minute; your files are untouched \\
 \bottomrule
 \end{tabularx}
 

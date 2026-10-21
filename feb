@@ -349,7 +349,7 @@ def cmd_code(args):
         fail(f"{editor} is not on the PATH and the app was not found. In VS Code: Remote Explorer -> Dev Containers -> {BOX} -> Attach, folder {ROOT_IN}")
     uri = f"vscode-remote://attached-container+{BOX.encode().hex()}{ROOT_IN}"
     subprocess.Popen([exe, "--folder-uri", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f"{editor} attached to {BOX} at {ROOT_IN}")
+    print(f"asked {editor} to attach to {BOX} at {ROOT_IN}: its window should show 'Container {BOX}' bottom left; a dialog may ask first")
 
 
 def editor_binary(editor):
@@ -452,6 +452,8 @@ def driver_command(args):
 def cmd_up(args):
     if args.car:
         args.no_sim = True          # the car is the simulator's replacement, not its companion
+    if args.deadman and not args.car and not sys.stdin.isatty():
+        fail("--deadman turns this terminal into the gamepad, so it needs a real terminal (not a pipe or a script)")
     if args.driver:
         args.stack, cap = driver_command(args)
         if args.max_speed is None and cap is not None:
