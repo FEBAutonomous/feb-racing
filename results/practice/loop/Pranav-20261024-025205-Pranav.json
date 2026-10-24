@@ -1,0 +1,51 @@
+{
+ "schema": 1,
+ "id": "20261024-025205-Pranav",
+ "event": "practice",
+ "team": "Pranav",
+ "image": "feb-devkit:v2",
+ "image_digest": "feb-devkit@sha256:2588a63c8f5517dcdf1996db9b30a9d65926331cf741d5a9978b59be6ee62c27",
+ "track": "loop",
+ "mode": "time-attack",
+ "rules": {
+  "laps": 10,
+  "warmup_laps": 1,
+  "collision_penalty_s": 10.0,
+  "max_collisions": 10,
+  "timeout_s": 300.0
+ },
+ "started_at": "2026-10-24T09:52:05+00:00",
+ "duration_s": 200.76,
+ "status": "finished",
+ "laps_completed": 11,
+ "real_time_factor": 1.0,
+ "warmup_s": 26.7219,
+ "lap_times": [
+  17.338,
+  17.334,
+  17.343,
+  17.345,
+  17.353,
+  17.335,
+  17.323,
+  17.349,
+  17.337,
+  17.34
+ ],
+ "collisions": 0,
+ "collision_times": [],
+ "penalty_s": 0.0,
+ "total_s": 173.398,
+ "best_lap_s": 17.323,
+ "restricted_subscribers": {},
+ "verified": true,
+ "runner": "prantheman-machine",
+ "error": null,
+ "verifies": "20261018-010413-Pranav",
+ "driver": {
+  "name": "feb_driver",
+  "kind": "walls",
+  "stack": "ros2 launch feb_driver drive.launch.py mode:=trackdrive",
+  "adapter": ""
+ }
+}

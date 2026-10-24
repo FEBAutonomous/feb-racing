@@ -1,0 +1,57 @@
+{
+ "schema": 1,
+ "id": "20261024-025532-Pranav",
+ "event": "practice",
+ "team": "Pranav",
+ "image": "feb-devkit:v2",
+ "image_digest": "feb-devkit@sha256:2588a63c8f5517dcdf1996db9b30a9d65926331cf741d5a9978b59be6ee62c27",
+ "track": "porto",
+ "mode": "time-attack",
+ "rules": {
+  "laps": 10,
+  "warmup_laps": 1,
+  "collision_penalty_s": 10.0,
+  "max_collisions": 10,
+  "timeout_s": 300.0
+ },
+ "started_at": "2026-10-24T09:55:32+00:00",
+ "duration_s": 199.76,
+ "status": "finished",
+ "laps_completed": 11,
+ "real_time_factor": 1.0,
+ "warmup_s": 26.5271,
+ "lap_times": [
+  16.873,
+  17.112,
+  16.993,
+  16.876,
+  16.567,
+  17.119,
+  17.678,
+  20.141,
+  16.504,
+  16.765
+ ],
+ "collisions": 5,
+ "collision_times": [
+  131.56,
+  140.34,
+  149.14,
+  159.17,
+  162.05
+ ],
+ "penalty_s": 50.0,
+ "total_s": 222.63,
+ "best_lap_s": 16.504,
+ "restricted_subscribers": {},
+ "verified": true,
+ "runner": "prantheman-machine",
+ "error": null,
+ "verifies": "20261018-010741-Pranav",
+ "driver": {
+  "name": "feb_driver",
+  "kind": "walls",
+  "stack": "ros2 launch feb_driver drive.launch.py mode:=trackdrive",
+  "adapter": ""
+ }
+}

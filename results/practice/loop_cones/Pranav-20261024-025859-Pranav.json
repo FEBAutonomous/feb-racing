@@ -1,0 +1,55 @@
+{
+ "schema": 1,
+ "id": "20261024-025859-Pranav",
+ "event": "practice",
+ "team": "Pranav",
+ "image": "ghcr.io/febautonomous/feb-devkit:latest",
+ "image_digest": "ghcr.io/febautonomous/feb-devkit@sha256:e35ddab05c1b7ccca4a942170e88d201916cdeaad4e338bb68da747c3a43f3ed",
+ "track": "loop_cones",
+ "mode": "time-attack",
+ "rules": {
+  "laps": 10,
+  "warmup_laps": 1,
+  "collision_penalty_s": 10.0,
+  "max_collisions": 10,
+  "timeout_s": 300.0
+ },
+ "started_at": "2026-10-24T09:58:59+00:00",
+ "duration_s": 263.82,
+ "status": "finished",
+ "laps_completed": 11,
+ "real_time_factor": 1.0,
+ "warmup_s": 32.3549,
+ "lap_times": [
+  23.084,
+  23.053,
+  23.121,
+  23.097,
+  23.161,
+  23.048,
+  23.046,
+  23.047,
+  23.089,
+  23.08
+ ],
+ "collisions": 0,
+ "collision_times": [],
+ "penalty_s": 0.0,
+ "total_s": 230.825,
+ "best_lap_s": 23.046,
+ "restricted_subscribers": {
+  "/autodrive/roboracer_1/lap_count": [
+   "_NODE_NAME_UNKNOWN_"
+  ]
+ },
+ "verified": true,
+ "runner": "prantheman-machine",
+ "error": null,
+ "verifies": "20261020-221021-Pranav",
+ "driver": {
+  "name": "feb_cone_driver",
+  "kind": "cones",
+  "stack": "ros2 launch feb_cone_driver drive.launch.py mode:=trackdrive",
+  "adapter": ""
+ }
+}
