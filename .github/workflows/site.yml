@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
     paths: [results/**, events/**, submissions.yaml, tracks/**, site/**, febrace/**, .github/workflows/site.yml]
+  # a results PR is merged by the harness's own token, and GitHub does not let that push start
+  # another workflow: rebuild when the merge workflow finishes instead
+  workflow_run:
+    workflows: [Practice result]
+    types: [completed]
   workflow_dispatch:
 permissions: { contents: read, pages: write, id-token: write }
 concurrency: { group: pages, cancel-in-progress: true }
