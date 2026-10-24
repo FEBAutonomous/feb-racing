@@ -1,0 +1,98 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+\setlist{nosep,leftmargin=*}
+
+\begin{document}
+\febtitle{feb\_racer: the memory racer}{%
+  \textbf{What} & a lap to map the track, then a raceline driven by pure pursuit\\[3pt]
+  \textbf{Where from} & the RoboRacer League~6 entry's mapping and raceline, on the car's contract\\[3pt]
+  \textbf{Status} & scored practice 2026-10-24: loop 138.8~s and porto 110.8~s, clean, against the gap follower's 173.4 and 168.2; car: untried\\}
+
+\section{What it does}
+
+Three phases, visible in \cmd{./feb logs}:
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Phase & What happens \\
+\midrule
+WARMUP & the gap follower drives one lap at \texttt{warmup\_speed} while a scan matcher builds an occupancy map
+  in the start frame, correcting the odometry as the map fills. The lap closes when the car is back within
+  \texttt{close\_radius\_m} of where it started, heading the same way, after \texttt{min\_lap\_m}. \\
+COMPUTE & the map is frozen. A thread extracts the corridor centre, optimises a minimum-curvature line inside the
+  corridor and gives it a friction-ellipse speed profile (\texttt{v\_max}, \texttt{ay\_max}, \texttt{a\_acc},
+  \texttt{a\_dec}). Under a second; the car keeps driving reactively meanwhile. \\
+RACE & every scan is matched against the map. A pure-pursuit tracker aims at the raceline point one lookahead ahead
+  and commands the profile's speed over the next \texttt{speed\_horizon\_m}. The gap follower's clearance brake stays
+  armed underneath. \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\textbf{When the map match drops} below \texttt{lost\_score} for \texttt{lost\_handoff\_s}, the car hands back to the
+gap follower at \texttt{recover\_speed} and takes the line back when the map matches again. The reactive law has no
+pose to lose, which is why it is the safety net; that idea comes straight from the league entry. After two seconds
+lost, or whenever the dead-man re-engages, it searches the whole map for itself once.
+
+\section{What it is not}
+
+It is not the league entry copied over. That node was 850 lines tied to the league's throttle commands and encoder
+ticks, with a sampling MPC and a dozen detectors for the league simulator's quirks. Kept: the scan matcher
+(\file{localizer.py}) and the raceline generator (\file{raceline\_gen.py}), unchanged. Replaced: the controller, by
+pure pursuit on the contract's speed and steering angle; the inputs, by \cmd{/scan} and \cmd{/odom}; the detectors,
+by the dead-man. The racer is \file{racer.py}, under 300 lines.
+
+\section{Running it}
+
+\begin{lstlisting}
+./feb up --driver feb_racer                         # simulator, it drives from the start
+./feb up --deadman --driver feb_racer               # hold SPACE: warm-up, then it races; let go, it stops
+./feb practice --driver feb_racer                   # scored: the warm-up lap is the rules' warm-up lap
+./feb up --car --driver feb_racer --mode-name inspection   # the car: RB held, slow numbers from driver.car.yaml
+\end{lstlisting}
+
+The map lives in the node for as long as it runs. Stop and start the stack and it maps again.
+
+\section{The numbers}
+
+\file{config/driver.yaml}, every value commented. The ones to touch first:
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Value & Meaning \\
+\midrule
+\texttt{warmup\_speed} & the mapping lap; slow is fine, the map only needs to be complete \\
+\texttt{v\_max}, \texttt{ay\_max} & the speed profile's cap and lateral limit; the first thing to raise on a track it laps cleanly \\
+\texttt{speed\_scale} & scales the whole profile; 0.8 for a first run on a new track \\
+\texttt{wall\_margin\_m} & how far the line keeps from the walls on top of half a car \\
+\texttt{lookahead\_gain} & pure pursuit's lookahead per m/s; higher is smoother and cuts corners more \\
+\texttt{lost\_score} & below this the pose is not trusted \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\file{config/driver.car.yaml} is loaded on top on the car: slower warm-up, \texttt{v\_max} 2.5, scale 0.8, and a
+longer \texttt{range\_max} because the S2 sees further than the simulator's lidar.
+
+\section{What the scored runs taught}
+
+The free runs were clean from the first evening; the scored practice, at the league's 10~Hz, was not,
+twice. Both causes were measured, not guessed. First, our odometry's heading integrates the gyro and at
+10~Hz drifts 18 degrees in 30~s and 84 by the end of a run; the racer now takes its heading from the
+IMU's absolute orientation when there is one. Second, with a good pose the car still clipped walls:
+at 10~Hz and a quarter-second actuator delay, pure pursuit at 4~m/s steers late. The tracker now
+aims from where the car will be one delay later, keeps 0.25~m from the walls and caps at 3~m/s. The
+same heading drift is why the cone racer lost localisation at 10~Hz; the house adapter will get the
+IMU heading too.
+
+\section{Known limits}
+
+\begin{itemize}
+  \item Walled tracks only. Cones are a different problem; see \texttt{feb\_cone\_racer}.
+  \item A respawn or a carried car breaks the map frame until the global search finds it again.
+  \item The car has not run it. The matcher and the map were built in the simulator with its lidar; the S2 is denser
+    and sees further, which only helps, but nobody has watched it.
+  \item Pure pursuit is a looser tracker than the league's MPC; the lap times have room.
+\end{itemize}
+
+\end{document}

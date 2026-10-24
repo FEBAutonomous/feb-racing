@@ -2,6 +2,22 @@
 
 Newest first.
 
+## 2026-10-24 (night) - feb_racer: the walls memory racer, clean under scoring
+
+`stack/feb_racer` (Pranav's stack, reaches `feb-stack` through submit): the RoboRacer League 6
+entry's scan matcher and raceline generator, unchanged, with a new ~300-line node on the contract:
+warm-up lap on the gap-follower law while mapping, raceline in a thread, pure pursuit with the
+actuator delay predicted, the gap follower underneath when the match drops, global search after
+being lost or when the dead-man re-engages. Scored practice: loop 138.8 s, porto 110.8 s, both
+clean (the gap follower: 173.4 / 168.2). Notes: `docs/manual/racer.pdf`.
+
+Two root causes found under the scored 10 Hz, both measured from the run bags: (1) the sim adapter's
+`/odom` heading integrates the gyro and drifts 18 deg in 30 s, 84 deg over a run, while the IMU's
+absolute yaw is fine - the racer now uses the IMU heading; **TODO: the adapter should too** (this is
+also why `feb_cone_racer` lost localisation at 10 Hz); (2) with a good pose, pure pursuit at 4 m/s
+and 10 Hz steers one actuator delay late into walls - now predicted, 0.25 m wall margin, 3 m/s cap.
+`feb_fast_driver` (the gap follower at 2.2-3.0 m/s) was tried and dropped: porto collides above 2.0.
+
 ## 2026-10-18: the racer on the contract, practice as Pranav, the team repo seeded
 
 - `feb_cone_racer` moved onto the contract: `/scan`, `/camera/color/image_raw`, `/imu`, `/odom`

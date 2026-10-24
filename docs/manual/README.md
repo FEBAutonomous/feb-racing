@@ -1,5 +1,6 @@
 # Manuals
 
+- `racer.pdf`: `feb_racer`, the walls memory racer (map on a warm-up lap, raceline, pure pursuit): what it does, how to run it, what the scored runs taught.
 - `member_guide.pdf`: release 2, the whole system for a member: the box, drivers, scoring and submitting, the dead-man, the car. Start here. Build: `tectonic member_guide.tex`.
 - `competitor_setup_mac.pdf`, `competitor_setup_windows.pdf`, `competitor_setup_linux.pdf`: setup only, every step from an empty machine to the first autonomous lap, one per system. Shared body `setup_body.tex`, per-system install `setup_install_<os>.tex`, shared appendix `starter_driver.tex`. Build: `tectonic competitor_setup_<os>.tex`.
 - `lab_ros_onboarding.pdf`: the ROS 2 onboarding lab (EECS C106A Labs 1 and 2 in our devkit), same content as `docs/lab-ros-onboarding.md`. Build: `tectonic lab_ros_onboarding.tex`.
