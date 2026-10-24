@@ -55,7 +55,7 @@ submit posts a result & submit posts the results and your code \\
  & Install \\
 \midrule
 Mac & Docker Desktop (or OrbStack). VS~Code, then its Extensions view, search \emph{Dev Containers}, Install. Foxglove from \url{https://foxglove.dev/download}. \\
-Windows & \textbf{WSL~2 Ubuntu} first: in PowerShell \cmd{wsl -{}-install -d Ubuntu}, reboot, open ``Ubuntu'' from the Start menu. Then Docker Desktop, and in its Settings, Resources, \emph{WSL integration}: tick \emph{Enable integration with my default WSL distro} and switch on Ubuntu. Then VS~Code with the Dev Containers extension (Extensions view, search, Install), and Foxglove. \\
+Windows & \textbf{WSL~2 Ubuntu} first: in PowerShell \cmd{wsl -{}-install -d Ubuntu}, then \cmd{wsl -{}-update}, reboot, open ``Ubuntu'' from the Start menu. Then Docker Desktop, and in its Settings, Resources, \emph{WSL integration}: tick \emph{Enable integration with my default WSL distro} and switch on Ubuntu. Then VS~Code with the Dev Containers extension (Extensions view, search, Install), and Foxglove. \\
 Linux & \cmd{sudo apt install docker.io}, \cmd{sudo usermod -aG docker \$USER}, log out and in. VS~Code with Dev Containers. Foxglove. \\
 \bottomrule
 \end{tabularx}
@@ -385,7 +385,7 @@ drive, are \file{docs/build-car.md}.
 Symptom & Fix \\
 \midrule
 \texttt{Cannot connect to the Docker daemon} & Docker Desktop is not running; open it, wait for the whale icon to settle \\
-\texttt{The command 'docker' could not be found in this WSL 2 distro} & Docker Desktop not running, or its WSL integration not applied: Settings, Resources, WSL integration, both switches on, \emph{Apply \& restart}; then close Ubuntu, \cmd{wsl -{}-shutdown} in PowerShell, open Ubuntu again \\
+\texttt{The command 'docker' could not be found in this WSL 2 distro} & first \cmd{wsl -{}-update} in PowerShell: an old WSL stops Docker's engine from starting at all. Then Docker Desktop running, its Settings, Resources, WSL integration, both switches on, \emph{Apply \& restart}; close Ubuntu, \cmd{wsl -{}-shutdown} in PowerShell, open Ubuntu again \\
 \texttt{this clone sits directly in /home/...} & the clone needs a folder of its own: \cmd{mkdir \textasciitilde/FEB \&\& mv \textasciitilde/feb-racing \textasciitilde/FEB/} \\
 \texttt{unauthorized} while pulling the image & a stale \cmd{ghcr.io} login: \cmd{docker logout ghcr.io}, run setup again \\
 \texttt{refusing to merge unrelated histories} & you pulled in the old clone; delete it and clone again (Setup) \\
