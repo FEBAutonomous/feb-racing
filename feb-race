@@ -69,10 +69,51 @@ def event_entries(spec):
     return [t for t in teams() if t["name"] in entries]
 
 
-def attempt(image, team, track, event, rules, gui=False, port=4568):
+STACK_REPO = pathlib.Path(__import__("os").environ.get("FEB_STACK_DIR", ROOT.parent / "feb-stack"))
+
+
+def slug(name):
+    return "".join(c if c.isalnum() else "_" for c in name.strip().lower()).strip("_")
+
+
+def team_drivers(team):
+    """The driver cards a team has merged into feb-stack: drivers/<slug>/<package>/driver.yaml."""
+    folder = STACK_REPO / "drivers" / slug(team)
+    out = []
+    for card in sorted(folder.glob("*/driver.yaml")):
+        m = yaml.safe_load(card.read_text()) or {}
+        if m.get("name"):
+            out.append(m)
+    return out
+
+
+def stack_for(team, driver):
+    """A workspace the runner mounts as src/stack: the team's merged packages plus feb-stack/shared,
+    copied into runs/_verify/<slug>/ so colcon builds only this team. Returns (ws, launch, adapter)."""
+    import shutil
+    cards = {m["name"]: m for m in team_drivers(team)}
+    if driver not in cards:
+        sys.exit(f"feb-race: {team} has no driver '{driver}' in {STACK_REPO}/drivers/{slug(team)} (merged?)")
+    m = cards[driver]
+    ws = ROOT / "runs" / "_verify" / slug(team)
+    shutil.rmtree(ws, ignore_errors=True)
+    ws.mkdir(parents=True)
+    for src in list((STACK_REPO / "shared").glob("*")) + list((STACK_REPO / "drivers" / slug(team)).glob("*")):
+        if src.is_dir() and not src.name.startswith("."):
+            shutil.copytree(src, ws / src.name, ignore=shutil.ignore_patterns("build", "install", "log", "__pycache__"))
+    modes = m.get("modes") or {}
+    mode = m.get("default_mode") or (next(iter(modes)) if modes else "trackdrive")
+    launch = (modes.get(mode) or {}).get("launch", "drive.launch.py")
+    extra = " ".join(f"{k}:={v}" for k, v in ((modes.get(mode) or {}).get("args") or {}).items())
+    cmd = f"ros2 launch {driver} {launch} mode:={mode} {extra}".strip()
+    adapter = ",".join(f"{k}={v}" for k, v in (m.get("adapter") or {}).items())
+    return ws, cmd, adapter, m.get("kind", "any")
+
+
+def attempt(image, team, track, event, rules, gui=False, port=4568, stack_dir=None, stack_cmd="", adapter=""):
     a = Attempt(image=image, track=track, sim_exe=sim_exe(), team=team, event=event, rules=rules,
-                port=port, headless=not gui, runs_dir=ROOT / "runs")
-    print(f"== {team}  {image}  track={track.name}  event={event}")
+                port=port, headless=not gui, runs_dir=ROOT / "runs", stack_dir=stack_dir, stack_cmd=stack_cmd, adapter=adapter)
+    print(f"== {team}  {image}  track={track.name}  event={event}" + (f"  stack={stack_cmd}" if stack_cmd else ""))
     result = a.run()
     path = results.save(result)
     print(f"   {result['status']}  laps={result['laps_completed']}  collisions={result['collisions']}  "
@@ -99,17 +140,33 @@ def cmd_event(args):
 
 
 def cmd_nightly(args):
+    """Every team's merged drivers on every qualifying track of their kind, verified."""
     tracks = qualifying_tracks()
     for team in teams():
-        for track in tracks:
-            attempt(team["image"], team["name"], track, "practice", rules_mod.Rules(), args.gui)
+        for m in team_drivers(team["name"]):
+            ws, cmd, adapter, kind = stack_for(team["name"], m["name"])
+            for track in tracks:
+                has = "cones" if json.loads((track / "track.json").read_text()).get("cones") else "walls"
+                if kind not in ("any", "all", has):
+                    continue
+                r = attempt(team["image"], team["name"], track, "practice", rules_mod.Rules(), args.gui, stack_dir=ws, stack_cmd=cmd, adapter=adapter)
+                r["verified"] = True
+                r["driver"] = {"name": m["name"], "kind": kind, "stack": cmd, "adapter": adapter, "packages": m.get("packages", [m["name"]])}
+                results.save(r)
 
 
 def cmd_verify(args):
+    """Rerun a self-reported result here, from the driver the result names (or --driver), out of feb-stack."""
     original = json.loads(pathlib.Path(args.result).read_text())
-    result = attempt(original["image"], original["team"], track_path(original["track"]), "practice", rules_mod.Rules(**original["rules"]), args.gui)
+    driver = args.driver or (original.get("driver") or {}).get("name")
+    if not driver:
+        sys.exit("feb-race: this result does not name its driver; pass --driver NAME")
+    ws, cmd, adapter, kind = stack_for(original["team"], driver)
+    result = attempt(original["image"], original["team"], track_path(original["track"]), "practice", rules_mod.Rules(**original["rules"]), args.gui,
+                     stack_dir=ws, stack_cmd=cmd, adapter=adapter)
     result["verified"] = True
     result["verifies"] = original["id"]
+    result["driver"] = {"name": driver, "kind": kind, "stack": cmd, "adapter": adapter}
     results.save(result)
 
 
@@ -209,6 +266,8 @@ def main():
         p = sub.add_parser(name)
         if extra:
             p.add_argument(extra)
+        if name == "verify":
+            p.add_argument("--driver", default=None, help="the driver to rerun, when the result file does not name it")
         p.set_defaults(func=func)
     for p in sub.choices.values():
         p.add_argument("--gui", action="store_true", help="show the simulator window")

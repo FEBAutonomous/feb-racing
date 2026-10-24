@@ -701,6 +701,11 @@ def cmd_practice(args):
         result = attempt.run()
         if args.driver:        # what feb submit needs to push the code: the driver and where it lives
             (attempt.dir / "driver.json").write_text(json.dumps({"driver": args.driver, "ws": str(pathlib.Path(args.ws).resolve() if args.ws else default_ws())}))
+            # and what the organiser's `feb-race verify` needs to rerun it from feb-stack: the card's facts
+            manifest, _ = read_manifest(driver_ws(args), args.driver)
+            result["driver"] = {"name": args.driver, "kind": manifest.get("kind", "any"), "stack": args.stack,
+                                "adapter": getattr(args, "adapter", ""), "packages": manifest.get("packages", [args.driver])}
+            (attempt.dir / "result.json").write_text(json.dumps(result, indent=1))
         done.append((track.name, result, attempt.dir))
         print(f"\n{track.name}: {result['status']}, laps {result['laps_completed']}, collisions {result['collisions']}, "
               f"total {result['total_s']} s, best lap {result['best_lap_s']} s   ({attempt.dir.name})")
