@@ -388,8 +388,9 @@ LB held, a human drives; RB held, your code drives; let go, it stops. Foxglove o
 \texttt{inspection}, then \texttt{trackdrive}. The lead's own notes on the car, wiring to first
 drive, are \file{docs/build-car.md}.
 
-\clearpage
 \section{When something is wrong}
+
+Setting up:
 
 \begin{tabularx}{\linewidth}{lX}
 \toprule
@@ -397,11 +398,21 @@ Symptom & Fix \\
 \midrule
 \texttt{Cannot connect to the Docker daemon} & Docker Desktop is not running; open it, wait for the whale icon to settle \\
 the car stops with \texttt{STOP: no lidar} every half minute (Windows) & the box's clock is jumping: a second WSL Ubuntu, or Windows itself, keeps resetting it. Windows Settings, Time, \emph{Set time automatically} on; in every other WSL Ubuntu \cmd{sudo systemctl disable -{}-now systemd-timesyncd}; then \cmd{wsl -{}-shutdown} and start Docker Desktop again \\
-\texttt{already running} on \cmd{./feb up} & a previous run is still going, its terminal was closed: \cmd{./feb stop} \\
 Docker Desktop will not start (Windows) & \cmd{wsl -{}-update} in PowerShell, reboot, open Docker Desktop again: an old WSL stops its engine \\
 \texttt{this clone sits directly in /home/...} & the clone needs a folder of its own: \cmd{mkdir \textasciitilde/FEB \&\& mv \textasciitilde/feb-racing \textasciitilde/FEB/} \\
 \texttt{unauthorized} while pulling the image & a stale \cmd{ghcr.io} login: \cmd{docker logout ghcr.io}, run setup again \\
 \texttt{refusing to merge unrelated histories} & you pulled in the old clone; delete it and clone again (Setup) \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+Running:
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Symptom & Fix \\
+\midrule
+\texttt{already running} on \cmd{./feb up} & a previous run is still going, its terminal was closed: \cmd{./feb stop} \\
 \texttt{no driver.yaml with name '...'} & no card with that \cmd{name:} in \file{stack/} or the starter kit: section~\ref{sec:package} \\
 \texttt{ros2: command not found} & you are in a laptop terminal: \cmd{./feb shell} \\
 my node is not there & it did not build: \cmd{./feb logs -n 100}, or \cmd{colcon build} in the workspace and read it \\
