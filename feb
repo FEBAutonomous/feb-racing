@@ -329,7 +329,24 @@ def cmd_stop(_=None):
     docker("rm", "-f", OPPONENT, PROXY)
     if box_state() == "running":
         docker("exec", BOX, "feb-up", "--stop")
+        docker("exec", BOX, "bash", "-c", "pkill -f feb_tools/key_joy 2>/dev/null; true")   # a dead-man terminal closed without Q
+    kill_sim()
     print("stopped")
+
+
+def kill_sim():
+    """The simulator window, if a run left it behind (a terminal closed instead of Ctrl-C). Matched by
+    the app's own path, never by a loose name: a shell whose command line mentions the name must survive."""
+    exe = app_executable()
+    if exe is None:
+        return
+    if platform.system() == "Windows":
+        subprocess.run(["taskkill", "/IM", exe.name, "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        out = subprocess.run(["pgrep", "-f", str(exe)], capture_output=True, text=True).stdout.split()
+        for pid in out:
+            if int(pid) not in (os.getpid(), os.getppid()):
+                subprocess.run(["kill", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def cmd_reset(_):
@@ -401,11 +418,26 @@ def read_manifest(ws, name):
           inspection: {launch: drive.launch.py, max_speed: 0.8}
         default_mode: trackdrive
     """
-    for candidate in pathlib.Path(ws).rglob("driver.yaml"):
+    for candidate in cards(ws):
         m = load_yaml(candidate) or {}
         if m.get("name") == name:
             return m, candidate.parent
     fail(f"no driver.yaml with name '{name}' under {ws}")
+
+
+def cards(ws):
+    """Every driver.yaml under a workspace, skipping colcon's build/install/log folders (they hold
+    copies and, on Windows, Linux symlinks the box made that Windows cannot even stat)."""
+    out = []
+    for candidate in pathlib.Path(ws).rglob("driver.yaml"):
+        if {"build", "install", "log"} & set(candidate.parts):
+            continue
+        try:
+            if candidate.is_file():
+                out.append(candidate)
+        except OSError:
+            continue
+    return out
 
 
 def load_yaml(path):
@@ -430,7 +462,7 @@ def driver_ws(args):
     if args.ws:
         return pathlib.Path(args.ws)
     for ws in (default_ws(), ROOT / "starter_kit"):
-        if any(m.get("name") == args.driver for m in (load_yaml(c) or {} for c in ws.rglob("driver.yaml")) if m):
+        if any(m.get("name") == args.driver for m in (load_yaml(c) or {} for c in cards(ws)) if m):
             args.ws = str(ws)
             return ws
     return default_ws()                     # read_manifest fails there with the clear message

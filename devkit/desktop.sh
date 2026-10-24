@@ -5,6 +5,7 @@
 export DISPLAY=:1
 export LIBGL_ALWAYS_SOFTWARE=1          # no GPU in the container: rviz2 renders in software
 export QT_X11_NO_MITSHM=1
+rm -f /tmp/.X1-lock /tmp/.X11-unix/X1     # a restarted box keeps the old lock, and Xvfb would quit believing :1 is taken
 Xvfb :1 -screen 0 "${FEB_SCREEN:-1600x900x24}" -nolisten tcp >/dev/null 2>&1 &
 for _ in $(seq 1 50); do xdpyinfo -display :1 >/dev/null 2>&1 && break; sleep 0.1; done
 mkdir -p ~/.fluxbox                     # a plain dark root, or fluxbox pops up a wallpaper complaint

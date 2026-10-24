@@ -21,7 +21,7 @@
   \textbf{Part III} & The car\\}
 
 \noindent{\small\color{gray}Verified end to end, every command as written, on Linux (Ubuntu 22.04) and macOS
-(Apple Silicon) on 2026-10-21. Windows: written against the code, not yet run on a machine.}
+(Apple Silicon) on 2026-10-21, and on Windows~11 (PowerShell, Docker Desktop) on 2026-10-24.}
 
 \section{What changed, in one minute}
 
@@ -117,7 +117,8 @@ login.
 \end{lstlisting}
 
 The simulator opens, and Foxglove with it if it is installed. Arrow keys drive. Close the
-simulator window to stop. \cmd{./feb up -{}-driver
+simulator window, or Ctrl-C in the terminal, to stop. Closing the \emph{terminal} instead leaves the run
+going; \cmd{./feb stop} ends it. \cmd{./feb up -{}-driver
 feb\_driver} races the starter driver instead. Mac, first time only: if macOS refuses to open the
 simulator, right-click \file{FEB Simulator.app} in \file{\textasciitilde/.feb-sim/app/mac} (Finder:
 Cmd-Shift-G, paste the path) and choose Open.
@@ -185,8 +186,8 @@ Inside the box there is nothing of ours to learn: \cmd{ros2}, \cmd{colcon}, \cmd
 \cmd{ros2 bag record -a}, and \cmd{rviz2 \&} which lands on the browser desktop.
 
 \textbf{rviz in the browser.} With \cmd{./feb up} running in one terminal, in a second one:
-\cmd{./feb shell -{}-gui}: a browser tab opens on the box's desktop, empty for now. In that
-terminal \cmd{rviz2 \&}, and rviz appears on the desktop. Fixed Frame \cmd{odom}; Add, By topic, \cmd{/scan} (LaserScan, style Points, size 4)
+\cmd{./feb shell -{}-gui}: a browser tab opens on the box's desktop, a plain Ubuntu logo for now. In
+that terminal \cmd{rviz2 \&}, and rviz appears on the desktop. Fixed Frame \cmd{odom}; Add, By topic, \cmd{/scan} (LaserScan, style Points, size 4)
 and \cmd{/odom}. A topic that stays empty wants Reliability Policy set to Best Effort.
 \textbf{Foxglove app:} Open connection, Foxglove WebSocket, \cmd{ws://localhost:8765}; the bridge
 runs whenever \cmd{feb up} does.
@@ -206,7 +207,7 @@ cd ../..
 \end{lstlisting}
 
 Mac: \cmd{sed -i ''} with the empty quotes, or run those lines inside \cmd{./feb shell}, whose
-\cmd{sed} is the Linux one. Windows: run all four lines inside \cmd{./feb shell}. Then
+\cmd{sed} is the Linux one. Windows: open \cmd{./feb shell} and type the four lines at its prompt. Then
 \cmd{./feb up -{}-driver my\_driver} builds and races it.
 
 \begin{tabularx}{\linewidth}{lX}
@@ -305,14 +306,15 @@ of it.
 \section{Score and submit}
 
 \begin{lstlisting}
-./feb practice --driver my_driver        # every practice track of its kind, competition rules
+./feb practice --driver my_driver        # every practice track of its kind, competition rules; --headless to hide the window
 ./feb submit --dry-run                   # what would be posted
 ./feb submit
 \end{lstlisting}
 
 \texttt{practice} runs each track in its own clean container the way the competition does: a
-warm-up lap and ten timed laps, 300~s limit, 10~s per collision, headless at the 10~Hz scoring
-rate. Each run lands in \file{runs/<id>/} with a result file, a bag and the logs.
+warm-up lap and ten timed laps, 300~s limit, 10~s per collision and disqualified above ten, at the
+10~Hz scoring rate. The simulator window shows unless you add \cmd{-{}-headless}. Each run lands in
+\file{runs/<id>/} with a result file, a bag and the logs.
 
 \texttt{submit} does two things from one command. It posts every clean run (finished, no
 collisions) not yet posted to the scoreboard as one pull request to \file{feb-racing}, which
@@ -393,6 +395,8 @@ drive, are \file{docs/build-car.md}.
 Symptom & Fix \\
 \midrule
 \texttt{Cannot connect to the Docker daemon} & Docker Desktop is not running; open it, wait for the whale icon to settle \\
+the car stops with \texttt{STOP: no lidar} every half minute (Windows) & the box's clock is jumping: a second WSL Ubuntu, or Windows itself, keeps resetting it. Windows Settings, Time, \emph{Set time automatically} on; in every other WSL Ubuntu \cmd{sudo systemctl disable -{}-now systemd-timesyncd}; then \cmd{wsl -{}-shutdown} and start Docker Desktop again \\
+\texttt{already running} on \cmd{./feb up} & a previous run is still going, its terminal was closed: \cmd{./feb stop} \\
 Docker Desktop will not start (Windows) & \cmd{wsl -{}-update} in PowerShell, reboot, open Docker Desktop again: an old WSL stops its engine \\
 \texttt{this clone sits directly in /home/...} & the clone needs a folder of its own: \cmd{mkdir \textasciitilde/FEB \&\& mv \textasciitilde/feb-racing \textasciitilde/FEB/} \\
 \texttt{unauthorized} while pulling the image & a stale \cmd{ghcr.io} login: \cmd{docker logout ghcr.io}, run setup again \\

@@ -18,6 +18,7 @@ Gamepad defaults are the 8BitDo Ultimate 2C in XInput mode under joy_node: left 
 dead-man, RB (button 5) the autonomous one, and both bumpers plus the view button (6) is stop.
 """
 import math
+import time
 
 import rclpy
 from ackermann_msgs.msg import AckermannDriveStamped
@@ -65,7 +66,9 @@ class Supervisor(Node):
     # ---------------------------------------------------------------- inputs
 
     def now(self):
-        return self.get_clock().now().nanoseconds * 1e-9
+        # a monotonic clock for the watchdogs: wall-clock jumps (a Windows box whose WSL clock was
+        # reset by 7 hours mid-run) must never read as a dead lidar or a released button
+        return time.monotonic()
 
     def on_drive(self, msg):
         self.drive, self.drive_t = msg, self.now()
