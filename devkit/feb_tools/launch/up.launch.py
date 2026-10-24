@@ -46,7 +46,9 @@ def setup(context):
         adapter = {k: float(v) for k, v in (kv.split("=", 1) for kv in cfg["adapter"].split(",") if "=" in kv)}
         actions.append(Node(package="feb_tools", executable="sim_adapter", name="sim_adapter", output="screen",
                             emulate_tty=True, parameters=[sim_time, adapter]))
-    sup_params = [sim_time, {"require_deadman": deadman, "max_speed": float(cfg["max_speed"])}]
+    # the lidar watchdog: 0.5 s is the car's rule (car.yaml); a laptop's simulator stalls its scans for
+    # longer than that when the scene gets busy, and a STOP there only puts the car into a wall
+    sup_params = [sim_time, {"require_deadman": deadman, "max_speed": float(cfg["max_speed"]), "scan_timeout": 2.0}]
     if car:     # the gamepad's button layout lives with the car's other hardware numbers
         sup_params.append(os.path.join(get_package_share_directory("feb_tools"), "config", "car.yaml"))
     actions.append(Node(package="feb_supervisor", executable="supervisor", name="supervisor", output="screen", emulate_tty=True,
