@@ -1,0 +1,149 @@
+\documentclass[11pt,a4paper]{article}
+\input{preamble}
+\setlist{nosep,leftmargin=*}
+
+\begin{document}
+\febtitle{Lead's car manual}{%
+  \textbf{Part I} & Power, networks, a terminal on the car\\[3pt]
+  \textbf{Part II} & Running a driver, the pad, what to watch\\[3pt]
+  \textbf{Part III} & When something is wrong, from what actually went wrong\\}
+
+\noindent{\small\color{gray}Everything here was done on the car between 2026-10-18 and 2026-10-24. Member-facing
+material is in \file{member\_guide.pdf}; this is the rest.}
+
+\part{Power, networks, a terminal}
+
+\section{Power on, in this order}
+
+\begin{enumerate}
+  \item Gamepad on. Hold its power button until the LED is solid. \emph{Before} the stack starts: the joystick
+  node looks for the pad once, at start.
+  \item Battery in, balance plug into the power board, SW1 on. The Jetson boots off the power board; about a
+  minute. If the Jetson is on its USB-C brick instead, SW1 only powers the VESC.
+  \item A terminal on the car (next section), then the stack (Part II).
+  \item Off: Ctrl-C the stack, SW1 off, battery out. The Jetson does not need a clean shutdown.
+\end{enumerate}
+
+Battery: a 3S LiPo, 12.6~V full, charge below 11.1, never below 10.5. The VESC reports the voltage; the
+power board runs warm, the battery must not. Store it in the bag, never in the car.
+
+\section{Reaching the car}
+
+The Jetson's login is \texttt{feb}, password \texttt{feb}. In the order it tries networks at boot:
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Where & How \\
+\midrule
+home Wi-Fi \texttt{mandem}, or the phone hotspot \texttt{pranavphone} & it joins by itself (the hotspot needs the Personal Hotspot page open on the phone until it connects). Then \cmd{ssh feb@feb-car} from any laptop on the tailnet, anywhere with internet. \\
+nothing known around & 45~s after boot it becomes Wi-Fi network \texttt{feb-car}, password \texttt{febautonomous}. Join it, \cmd{ssh feb@10.42.0.1}. No internet for the car in this mode. \\
+USB-C cable to a laptop & \cmd{ssh feb@192.168.55.1} \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+Gotcha: if the car boots without a known Wi-Fi it goes into its own hotspot and \emph{stays} there; it will not
+join the phone later. Either power-cycle with the hotspot page open, or join \texttt{feb-car} and run
+\cmd{sudo nmcli con up pranavphone}. Adding a new Wi-Fi:
+
+\begin{lstlisting}
+sudo nmcli con add type wifi ifname wlP1p1s0 con-name NAME ssid NAME wifi-sec.key-mgmt wpa-psk wifi-sec.psk PASSWORD connection.autoconnect yes
+\end{lstlisting}
+
+The car's Wi-Fi region is set to US (5~GHz works). Tailscale name \texttt{feb-car}, plain ssh, Tailscale SSH off.
+
+\part{Running a driver}
+
+\section{The command}
+
+\begin{lstlisting}
+cd ~/FEB/feb-stack && git pull                      # the team's merged drivers
+cd ~/FEB/feb-racing && git pull                     # launcher, tracks, docs
+./feb up --car --driver feb_driver --mode-name inspection
+\end{lstlisting}
+
+Drivers come from \file{feb-stack} first, then the starter kit, so the starter drivers run before anyone
+has submitted. \cmd{-{}-mode-name inspection} caps the supervisor at 0.8~m/s; leave it off for the driver's
+trackdrive cap. Wait for three lines in the output: \emph{Connected to VESC}, \emph{Opened joystick},
+\emph{scan\_rotate: lidar\_yaw}. Then the pad.
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Driver & What it does on the car \\
+\midrule
+\texttt{feb\_driver} & the gap follower; drove the corridor on 2026-10-19 at 0.8~m/s, door nooks included \\
+\texttt{feb\_racer} & a mapping lap on the gap-follower law at 1.2~m/s, then a raceline at up to 2.5~m/s in trackdrive. Untried on the car as of 2026-10-24: first run in inspection, on a loop it can close, someone walking beside it. \\
+\texttt{feb\_cone\_driver} & cones; needs a cone track. \\
+\bottomrule
+\end{tabularx}
+
+\section{The pad}
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Hold & \\
+\midrule
+LB & MANUAL: left stick forward/back is speed, right stick is steering \\
+RB & AUTONOMOUS: the driver drives \\
+nothing & IDLE, stopped \\
+minus & STOP, latched; LB or RB clears it \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+The 8BitDo Ultimate 2C has two modes with different button numbers. The car is configured for the mode it is in
+(usb id \texttt{2dc8:301c}: LB 6, RB 7, minus 10). \textbf{Never press the X, B or A + Home combos}; that flips
+the mode and every button moves. If a bumper does nothing or STOP latches by itself, that is what happened:
+power the pad off, hold X + Home until it lights, check with \cmd{lsusb | grep 8BitDo} that it reads
+\texttt{301c}.
+
+\section{What to watch, in a second terminal}
+
+\begin{lstlisting}
+./feb logs -f                                         # everything the stack prints
+./feb shell -c "ros2 topic hz /scan"                  # 10 Hz from the lidar
+./feb shell -c "ros2 topic echo /feb/state"           # IDLE / MANUAL / AUTONOMOUS / STOP and why
+./feb shell -c "ros2 topic echo /drive"               # what the driver asks for
+\end{lstlisting}
+
+If \cmd{ros2 topic} refuses with \emph{context is invalid} or \emph{failed to initialize wait set}, that is a
+quirk of the ROS tools after many short commands; the stack is fine. \cmd{ros2 daemon stop} and try again,
+or read \cmd{./feb logs}.
+
+Recording a run: \cmd{./feb shell -c "ros2 bag record -s mcap -o /home/feb/FEB/bags/NAME /scan /drive
+/ackermann\_cmd /feb/state /odom /joy /sensors/core"} in the second terminal, Ctrl-C to end; the folder
+lands in \file{\textasciitilde/FEB/bags} on the Jetson, \cmd{scp -r} it to a laptop and open the \file{.mcap}
+in Foxglove.
+
+\part{When something is wrong}
+
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Symptom & Cause and fix \\
+\midrule
+no \emph{Opened joystick}, or \cmd{ls /dev/input/js0} fails & the pad is off, or paired after the stack started. Pad on, LED solid, then Ctrl-C and \cmd{feb up} again. The dongle shows \texttt{8BitDo IDLE} in \cmd{lsusb} while the pad is off. \\
+STOP latches on its own; LB or RB does nothing & the pad changed mode (see The pad). \\
+no \emph{Connected to VESC}, no \file{/dev/sensors/vesc} & SW1 off, or the VESC USB in the wrong place. The VESC needs battery power; the Jetson's brick is not enough. \\
+\file{/dev/sensors/rplidar} missing & the lidar's USB; the udev rule maps the CP2102 to it. \\
+car drives in the wrong direction / steers wrong & VESC Tool: Invert Motor Direction (the motor), servo 0.3 should steer left. Both set on 2026-10-19. \\
+lidar scan is rotated & \texttt{lidar\_yaw} in \file{devkit/feb\_tools/config/car.yaml}, 1.5708 for the S2 turned 90 degrees. Check: a hand in front of the nose reads 0 degrees in \cmd{/scan}. \\
+Docker: \emph{Unable to enable DIRECT ACCESS FILTERING, raw table} & the Jetson kernel has no iptables raw module; dockerd runs with \texttt{DOCKER\_INSECURE\_NO\_IPTABLES\_RAW=1} in \file{/etc/systemd/system/docker.service.d/raw.conf}. Already in place; re-create after a reflash. \\
+\cmd{feb update} replaced the box with the registry image and something is missing & on the car the registry image may lag the local build. Rebuild natively (below) or \cmd{docker tag} the local image back to \texttt{:gui} and \cmd{./feb reset}. \\
+a house-code change must reach the car now & \cmd{docker build -t ghcr.io/febautonomous/feb-devkit:latest devkit/} then \cmd{-{}-build-arg BASE=... -f devkit/Dockerfile.gui -t ...:gui}; ten minutes from cache. Then \cmd{./feb reset}. \\
+a car.yaml change must reach the car now & \cmd{docker cp} it into the box at \file{/home/autodrive\_devkit/install/feb\_tools/share/feb\_tools/config/car.yaml}, \cmd{feb stop}, \cmd{feb up}. Rebuild the image when convenient. \\
+sudo needed from a Claude session & it cannot; run it yourself over ssh with \cmd{-t}. \\
+car not on the phone hotspot at campus & it fell back to its own hotspot at boot (Part I). \\
+motor stutters from standstill & the sensorless dead zone below ~1000~ERPM; normal. \\
+\bottomrule
+\end{tabularx}
+
+\section{Reflashing}
+
+Jetson Linux R36.4.3 from this PC with \file{\textasciitilde/FEB/jetson-flash/prepare\_and\_flash.sh}: power off,
+a jumper across J14 pins 9 and 10 while plugging the power in, USB-C to the PC, run the script. The Jetson
+shows as USB \texttt{0955:7523 APX} in recovery. The script pre-seeds the user, hostname, udev rules and the
+hotspot fallback; Tailscale, Docker's raw-table setting, the xpad driver (compiled from source for the
+8BitDo receiver, \file{\textasciitilde/xpad-src}) and the Wi-Fi networks are done by hand afterwards:
+\file{docs/build-car.md}, Session 4, has each command.
+
+\end{document}
