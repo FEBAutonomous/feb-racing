@@ -55,15 +55,21 @@ submit posts a result & submit posts the results and your code \\
  & Install \\
 \midrule
 Mac & Docker Desktop (or OrbStack). VS~Code, then its Extensions view, search \emph{Dev Containers}, Install. Foxglove from \url{https://foxglove.dev/download}. \\
-Windows & \textbf{WSL~2 Ubuntu} first: in PowerShell \cmd{wsl -{}-install -d Ubuntu}, reboot, open ``Ubuntu'' from the Start menu. Then Docker Desktop, and in its Settings, Resources, \emph{WSL integration}, switch on Ubuntu. Then VS~Code with the Dev Containers extension (Extensions view, search, Install), and Foxglove. \\
+Windows & \textbf{WSL~2 Ubuntu} first: in PowerShell \cmd{wsl -{}-install -d Ubuntu}, reboot, open ``Ubuntu'' from the Start menu. Then Docker Desktop, and in its Settings, Resources, \emph{WSL integration}: tick \emph{Enable integration with my default WSL distro} and switch on Ubuntu. Then VS~Code with the Dev Containers extension (Extensions view, search, Install), and Foxglove. \\
 Linux & \cmd{sudo apt install docker.io}, \cmd{sudo usermod -aG docker \$USER}, log out and in. VS~Code with Dev Containers. Foxglove. \\
 \bottomrule
 \end{tabularx}
 
 \medskip
-And one GitHub thing: an SSH key on your account (GitHub: Settings, SSH and GPG keys; \cmd{ssh-keygen}
-makes one if you have none). The clone below and \cmd{feb submit} use it. Without one, clone with
-\cmd{https://github.com/FEBAutonomous/feb-racing.git} instead and add the key before you submit.
+Sign-ins: Docker Desktop offers one, skip it. Foxglove needs a free account the first time it opens.
+VS~Code needs none.
+
+And one GitHub thing: an SSH key on your account. If the clone below stops with \texttt{Permission
+denied (publickey)}, this machine has no key on your GitHub account yet. Either \cmd{ssh-keygen -t
+ed25519}, Enter three times, then paste the contents of \file{\textasciitilde/.ssh/id\_ed25519.pub}
+into GitHub, Settings, SSH and GPG keys, New SSH key, and clone again. Or clone over https,
+\cmd{https://github.com/FEBAutonomous/feb-racing.git}, and add the key before your first
+\cmd{feb submit}. On Windows the key belongs to Ubuntu, not to Windows.
 
 Where things live: Mac, under \file{/Users}, which \file{\textasciitilde/FEB} already is. Windows,
 \textbf{inside WSL}: every command in this guide is typed in the Ubuntu terminal, never PowerShell,
