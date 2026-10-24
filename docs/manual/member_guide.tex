@@ -55,7 +55,7 @@ submit posts a result & submit posts the results and your code \\
  & Install \\
 \midrule
 Mac & Docker Desktop (or OrbStack). VS~Code, then its Extensions view, search \emph{Dev Containers}, Install. Foxglove from \url{https://foxglove.dev/download}. \\
-Windows & \textbf{WSL~2 Ubuntu} first: in PowerShell \cmd{wsl -{}-install -d Ubuntu}, then \cmd{wsl -{}-update}, reboot, open ``Ubuntu'' from the Start menu. Then Docker Desktop, and in its Settings, Resources, \emph{WSL integration}: tick \emph{Enable integration with my default WSL distro} and switch on Ubuntu. Then VS~Code with the Dev Containers extension (Extensions view, search, Install), and Foxglove. \\
+Windows & In PowerShell \cmd{wsl -{}-install}, then \cmd{wsl -{}-update}, reboot: that is Docker's engine, you never open Ubuntu. Then Docker Desktop. Python~3 from \url{https://python.org} with \emph{Add python.exe to PATH} ticked. Git for Windows from \url{https://git-scm.com}. VS~Code with the Dev Containers extension (Extensions view, search, Install). Foxglove. \\
 Linux & \cmd{sudo apt install docker.io}, \cmd{sudo usermod -aG docker \$USER}, log out and in. VS~Code with Dev Containers. Foxglove. \\
 \bottomrule
 \end{tabularx}
@@ -69,14 +69,13 @@ denied (publickey)}, this machine has no key on your GitHub account yet. Either 
 ed25519}, Enter three times, then paste the contents of \file{\textasciitilde/.ssh/id\_ed25519.pub}
 into GitHub, Settings, SSH and GPG keys, New SSH key, and clone again. Or clone over https,
 \cmd{https://github.com/FEBAutonomous/feb-racing.git}, and add the key before your first
-\cmd{feb submit}. On Windows the key belongs to Ubuntu, not to Windows.
+\cmd{feb submit}. On Windows, \cmd{ssh-keygen} runs in PowerShell too, and the key is in \file{C:\textbackslash Users\textbackslash you\textbackslash .ssh}.
 
-Where things live: Mac, under \file{/Users}, which \file{\textasciitilde/FEB} already is. Windows,
-\textbf{inside WSL}: every command in this guide is typed in the Ubuntu terminal, never PowerShell,
-and \file{\textasciitilde/FEB} is the Ubuntu home, not \file{C:}. The simulator then runs as a Linux
-app inside WSL and gets its window from WSLg, built into Windows~11; on Windows~10 install WSL from
-the Microsoft Store, not the old built-in one, to get it. Foxglove is optional everywhere; the
-browser desktop covers most of it.
+Where things live: Mac, under \file{/Users}, which \file{\textasciitilde/FEB} already is. Windows:
+every command in this guide is typed in \textbf{PowerShell}, the same \cmd{./feb} commands, and
+\file{\textasciitilde/FEB} is \file{C:\textbackslash Users\textbackslash you\textbackslash FEB}. The box is Linux
+inside Docker; the simulator is the native Windows build on your own GPU. Foxglove is optional
+everywhere; the browser desktop covers most of it.
 
 \subsection*{2. Had the old devkit? Delete it}
 
@@ -84,7 +83,7 @@ Release 2 rewrote the repository, so the old clone cannot be updated. Delete it;
 you never had it.
 
 \begin{lstlisting}
-rm -rf ~/feb-racing            # or wherever it is
+rm -rf ~/feb-racing            # or wherever it is;  Windows: rm -r -fo ~/feb-racing
 \end{lstlisting}
 
 Wrote code in its \file{stack/} folder? Copy that folder somewhere safe before deleting, and drop
@@ -95,6 +94,14 @@ it into the new \file{stack/} after step~3. It runs again once it has a card (se
 \begin{lstlisting}
 mkdir -p ~/FEB && cd ~/FEB
 git clone git@github.com:FEBAutonomous/feb-racing.git && cd feb-racing
+./feb setup --name "Your Name"
+\end{lstlisting}
+
+Windows, PowerShell, one line at a time (no \cmd{\&\&} there):
+
+\begin{lstlisting}
+mkdir ~/FEB; cd ~/FEB
+git clone git@github.com:FEBAutonomous/feb-racing.git; cd feb-racing
 ./feb setup --name "Your Name"
 \end{lstlisting}
 
@@ -199,7 +206,8 @@ cd ../..
 \end{lstlisting}
 
 Mac: \cmd{sed -i ''} with the empty quotes, or run those lines inside \cmd{./feb shell}, whose
-\cmd{sed} is the Linux one. Then \cmd{./feb up -{}-driver my\_driver} builds and races it.
+\cmd{sed} is the Linux one. Windows: run all four lines inside \cmd{./feb shell}. Then
+\cmd{./feb up -{}-driver my\_driver} builds and races it.
 
 \begin{tabularx}{\linewidth}{lX}
 \toprule
@@ -385,7 +393,7 @@ drive, are \file{docs/build-car.md}.
 Symptom & Fix \\
 \midrule
 \texttt{Cannot connect to the Docker daemon} & Docker Desktop is not running; open it, wait for the whale icon to settle \\
-\texttt{The command 'docker' could not be found in this WSL 2 distro} & first \cmd{wsl -{}-update} in PowerShell: an old WSL stops Docker's engine from starting at all. Then Docker Desktop running, its Settings, Resources, WSL integration, both switches on, \emph{Apply \& restart}; close Ubuntu, \cmd{wsl -{}-shutdown} in PowerShell, open Ubuntu again \\
+Docker Desktop will not start (Windows) & \cmd{wsl -{}-update} in PowerShell, reboot, open Docker Desktop again: an old WSL stops its engine \\
 \texttt{this clone sits directly in /home/...} & the clone needs a folder of its own: \cmd{mkdir \textasciitilde/FEB \&\& mv \textasciitilde/feb-racing \textasciitilde/FEB/} \\
 \texttt{unauthorized} while pulling the image & a stale \cmd{ghcr.io} login: \cmd{docker logout ghcr.io}, run setup again \\
 \texttt{refusing to merge unrelated histories} & you pulled in the old clone; delete it and clone again (Setup) \\

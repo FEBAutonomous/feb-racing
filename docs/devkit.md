@@ -29,8 +29,9 @@ We call it the box. You never type a `docker` command. The one-page version is `
    ./feb up             # the house nodes, the simulator window and Foxglove. Drive with the keys.
    ```
 
-That is the whole install. Windows: do all of this from a WSL 2 (Ubuntu) terminal with Docker
-Desktop's WSL integration on, and keep `~/FEB` inside WSL. Mac: keep `~/FEB` under `/Users`.
+That is the whole install. Windows: PowerShell, with Python 3 and Git for Windows installed, the
+same `./feb` commands; `~/FEB` is `C:\Users\you\FEB`, the simulator is the native Windows build.
+Mac: keep `~/FEB` under `/Users`.
 
 ## Already had the old devkit
 

@@ -1,0 +1,4 @@
+feb text eol=lf
+feb.cmd text eol=crlf
+*.sh text eol=lf
+*.py text eol=lf
