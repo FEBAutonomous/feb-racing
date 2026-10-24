@@ -67,6 +67,19 @@ APPS = {                                  # --apps shorthands; anything else is 
 OPPONENT_SPEED = {"slow": 1.5, "normal": 2.0, "fast": 2.5}   # the lidar house racer's max_speed
 MAP_OPPONENT_SPEED = 2.5                                      # --opponent map: the map-following driver
 ON_CAR = os.environ.get("FEB_CAR") == "1" or pathlib.Path("/dev/sensors").exists()   # the Jetson: devices go into the box
+try:
+    IS_WSL = "microsoft" in pathlib.Path("/proc/version").read_text().lower()        # Windows: the browser and Foxglove live outside
+except OSError:
+    IS_WSL = False
+
+
+def open_url(url):
+    """The laptop's browser, or whatever handles the URL's scheme. Under WSL that is Windows."""
+    if IS_WSL:
+        subprocess.Popen(["cmd.exe", "/c", "start", "", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd="/mnt/c")
+        return
+    import webbrowser
+    webbrowser.open(url)
 RELEASES = "https://github.com/FEBAutonomous/feb-racing/releases/latest/download"
 
 
@@ -212,8 +225,7 @@ def check_foxglove():
         return
     print("Foxglove app not found. Install it from https://foxglove.dev/download and sign in once")
     print("(free account); `feb up` then opens it on your car's topics. Optional but recommended.")
-    import webbrowser
-    webbrowser.open("https://foxglove.dev/download")
+    open_url("https://foxglove.dev/download")
 
 
 
@@ -317,8 +329,7 @@ def open_desktop():
                 break
         time.sleep(1)
     print(f"desktop: {url}")
-    import webbrowser
-    webbrowser.open(url)
+    open_url(url)
 
 
 def cmd_stop(_=None):
@@ -588,6 +599,8 @@ def foxglove_app():
     elif system == "Windows":
         base = pathlib.Path(os.environ.get("LOCALAPPDATA", "")) / "Programs"
         candidates = [base / "Foxglove" / "Foxglove.exe", base / "Foxglove Studio" / "Foxglove Studio.exe"]
+    elif IS_WSL:
+        candidates = list(pathlib.Path("/mnt/c/Users").glob("*/AppData/Local/Programs/Foxglove*/Foxglove*.exe"))
     else:
         candidates = [pathlib.Path(p) for p in (shutil.which("foxglove"), shutil.which("foxglove-studio")) if p]
         candidates += [pathlib.Path(os.environ.get("FEB_FOXGLOVE_APP", "/nonexistent"))]
@@ -603,10 +616,12 @@ def open_foxglove():
         print(f"{hint}  (desktop app not found; install from https://foxglove.dev/download)")
         return
     system = platform.system()
+    if IS_WSL:
+        open_url(FOXGLOVE_URL)           # Windows owns the foxglove:// scheme and starts its own Foxglove
+        print(f"asked Windows to open Foxglove on ws://localhost:{FOXGLOVE_PORT}")
+        return
     if system == "Darwin":
         cmd = ["open", "-a", str(app), FOXGLOVE_URL]
-    elif system == "Windows":
-        cmd = [str(app), FOXGLOVE_URL]
     else:
         cmd = [str(app), FOXGLOVE_URL]
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
