@@ -18,6 +18,7 @@ def generate_launch_description():
              remappings=[("scan", "scan_raw")]),
         Node(package="feb_tools", executable="scan_rotate", name="scan_rotate", parameters=[cfg], output="screen"),   # scan_raw -> /scan, nose at zero
         Node(package="joy", executable="joy_node", name="joy", parameters=[cfg]),
+        Node(package="feb_tools", executable="battery", name="battery", parameters=[cfg], output="screen"),   # /feb/battery from the VESC's voltage
         Node(package="tf2_ros", executable="static_transform_publisher", name="static_baselink_to_laser",
              arguments=["0.27", "0.0", "0.11", "0.0", "0.0", "0.0", "base_link", "laser"]),
     ])

@@ -61,3 +61,12 @@ supervisor:
     stop_button: 10
     speed_axis: 1
     steer_axis: 2
+
+battery:
+  ros__parameters:
+    cells: 3                       # Zeee 3S 6000 mAh LiPo
+    capacity_ah: 6.0
+    pack_resistance: 0.05          # ohm; undoes the sag under load before reading the charge table
+    baseline_current: 1.5          # A the Jetson, lidar and servo draw through the power board, unseen by the VESC
+    recharge_soc: 0.2              # "time to recharge" counts down to this
+    stop_cell_voltage: 3.5         # 10.5 V: stop driving
