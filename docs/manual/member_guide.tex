@@ -170,6 +170,7 @@ with a reset or a new image; your files never do.
 ./feb shell -{}-gui & the same, plus the box's desktop in a browser tab (rviz2, rqt, turtlesim) \\
 ./feb code & VS Code attached to the box (\cmd{-{}-cursor} for Cursor) \\
 ./feb up & house nodes, simulator, Foxglove; drive by hand; Ctrl-C ends it \\
+./feb new NAME & your own driver in \file{stack/}, the starter copied and renamed; \cmd{-{}-from feb\_cone\_driver} for the cone template, \cmd{-{}-ws DIR} for another folder \\
 ./feb up -{}-driver NAME & your driver races; \cmd{-{}-track T}, \cmd{-{}-mode-name M}, \cmd{-{}-noise 1}, \cmd{-{}-opponent normal} \\
 ./feb up -{}-deadman -{}-driver NAME & the car's rules in the simulator (section~\ref{sec:deadman}) \\
 ./feb stop & ends \texttt{feb up} from another terminal; the box stays \\
@@ -201,7 +202,7 @@ One command copies the template into \file{stack/} under your name and renames i
 scoreboard and the car will call the driver:
 
 \begin{lstlisting}
-./feb new my_driver                 # --from feb_cone_driver for the cone template
+./feb new my_driver                 # --from feb_cone_driver for the cone template, --ws DIR for another folder
 ./feb up --driver my_driver         # builds and races it
 \end{lstlisting}
 

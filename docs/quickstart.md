@@ -26,6 +26,7 @@ do steps 2 and 3 above, then copy your old `stack/` contents into the new `stack
 | `./feb shell` | a terminal in the box: `ros2`, `colcon`, `pip`, anything. As many as you like. |
 | `./feb code` | VS Code inside the box |
 | `./feb shell --gui` | plus a desktop in the browser for rviz2, rqt, turtlesim |
+| `./feb new my_driver` | your own driver in `stack/`, the starter copied and renamed; `--from feb_cone_driver`, `--ws DIR` |
 | `./feb up --driver my_driver` | your driver races in the simulator, Foxglove opens |
 | `./feb up --deadman --driver my_driver` | the same under the car's rules: hold SPACE to drive, M for manual |
 | `./feb stop` | ends that; the box stays |
