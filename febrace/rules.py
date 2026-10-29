@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 # To enter the first competition a team must, on EVERY practice track, complete a full
 # attempt (all timed laps) with at most this many collisions. Verified (rerun) results count.
 QUALIFY_MAX_COLLISIONS = 0   # zero: a run that touches a wall does not count
+QUALIFY_LAPS = 10            # a run scored on fewer timed laps (feb practice --laps N) is a test, never posted
 
 
 @dataclass

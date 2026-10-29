@@ -803,12 +803,14 @@ def cmd_practice(args):
 def unsubmitted_runs(team, include_all=False):
     """Run folders not yet posted: this team's, finished with at most the qualifying number of
     collisions unless include_all, oldest first."""
-    from febrace.rules import QUALIFY_MAX_COLLISIONS
+    from febrace.rules import QUALIFY_LAPS, QUALIFY_MAX_COLLISIONS
     runs = []
     for res in sorted((ROOT / "runs").glob("*/result.json"), key=os.path.getmtime):
         r = json.loads(res.read_text())
         if (res.parent / ".submitted").exists() or r.get("team") != team or r.get("event") != "practice":
             continue
+        if (r.get("rules") or {}).get("laps", QUALIFY_LAPS) < QUALIFY_LAPS:
+            continue                        # a --laps N test run: not a result
         if include_all or (r["status"] == "finished" and r["collisions"] <= QUALIFY_MAX_COLLISIONS):
             runs.append((res.parent, r))
     return runs
