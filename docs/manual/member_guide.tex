@@ -430,4 +430,58 @@ anything weird & \cmd{./feb reset}: thirty seconds, nothing of yours is in there
 \bottomrule
 \end{tabularx}
 
+\appendix
+\section{Every track}\label{sec:tracks}
+
+\cmd{./feb up -{}-track FOLDER} and \cmd{./feb practice -{}-track FOLDER} take the folder name; every track is in
+\file{tracks/}, one folder each, with its picture. Qualifying tracks are the ones \cmd{feb practice} runs by
+default and the board scores: \texttt{loop} and \texttt{porto} for walls drivers, \texttt{loop\_cones} for cones
+drivers. The rest are practice: \cmd{-{}-track all} runs every track of the driver's kind.
+
+\begin{tabularx}{\linewidth}{llXl}
+\toprule
+Folder & Kind & Name & Direction \\
+\midrule
+\multicolumn{4}{l}{\textit{FEB, ours, walls}} \\
+\texttt{circuit} & walls & FEB Circuit & ccw \\
+\texttt{esses} & walls & FEB Esses & ccw \\
+\texttt{loop \textbf{(qualifying)}} & walls & FEB Loop & ccw \\
+\midrule
+\multicolumn{4}{l}{\textit{FEB, cone edition}} \\
+\texttt{circuit\_cones} & cones & FEB Circuit (cones) & cw \\
+\texttt{esses\_cones} & cones & FEB Esses (cones) & cw \\
+\texttt{loop\_cones \textbf{(qualifying)}} & cones & FEB Loop (cones) & cw \\
+\midrule
+\multicolumn{4}{l}{\textit{RoboRacer league, walls}} \\
+\texttt{porto \textbf{(qualifying)}} & walls & Porto (legacy RoboRacer) & ccw \\
+\texttt{rr\_berlin} & walls & Berlin & ccw \\
+\texttt{rr\_vegas} & walls & Vegas & ccw \\
+\midrule
+\multicolumn{4}{l}{\textit{F1 circuits, walls}} \\
+\texttt{interlagos} & walls & Interlagos (1:10) & ccw \\
+\texttt{monza} & walls & Monza (1:10) & ccw \\
+\texttt{silverstone} & walls & Silverstone (1:10) & ccw \\
+\texttt{spa} & walls & Spa-Francorchamps (1:10) & ccw \\
+\texttt{spielberg} & walls & Spielberg (1:10) & ccw \\
+\midrule
+\multicolumn{4}{l}{\textit{F1 circuits, cones}} \\
+\texttt{interlagos\_cones} & cones & Interlagos (1:10, cones) & cw \\
+\texttt{monza\_cones} & cones & Monza (1:10, cones) & cw \\
+\texttt{silverstone\_cones} & cones & Silverstone (1:10, cones) & cw \\
+\texttt{spa\_cones} & cones & Spa-Francorchamps (1:10, cones) & cw \\
+\texttt{spielberg\_cones} & cones & Spielberg (1:10, cones) & cw \\
+\midrule
+\multicolumn{4}{l}{\textit{Formula Student layouts, cones}} \\
+\texttt{fs\_boa\_constrictor} & cones & FS boa constrictor (EUFS) & ccw \\
+\texttt{fs\_bone} & cones & FS bone (EUFS) & ccw \\
+\texttt{fs\_comp\_2021} & cones & FS comp 2021 (EUFS) & cw \\
+\texttt{fs\_hairpins\_increasing\_difficulty} & cones & FS hairpins (EUFS) & cw \\
+\texttt{fs\_peanut} & cones & FS peanut (EUFS) & ccw \\
+\texttt{fs\_rectangle} & cones & FS rectangle (EUFS) & ccw \\
+\texttt{fs\_small\_track} & cones & FS small track (EUFS) & cw \\
+\texttt{fsg} & cones & FS Germany & cw \\
+\texttt{fsi} & cones & FS Italy & cw \\
+\bottomrule
+\end{tabularx}
+
 \end{document}
