@@ -18,7 +18,9 @@ Requirements: Docker Desktop (Mac/Windows) or docker.io (Linux), Python 3, and [
 The MPC racer, `feb_cone_racer`, is on the same contract but is sim-only for now: it drives clean
 at the simulator's full rate and not yet at the 10 Hz scoring rate, so it is not released.
 
-The kit is a set of packages, copied into your workspace as needed: `feb_driver` (the gap
+The kit is a set of packages. The two shared ones, `feb_mission` and `feb_cone_ordering`, are built
+from the kit on every `feb up` unless your workspace has its own copy, so a launch file that includes
+them works on a laptop as on the car. The drivers are templates for `feb new`: `feb_driver` (the gap
 follower, the template), `feb_cone_driver` (cones), `feb_cone_ordering` (the team's cone ordering
 as a ROS service) and `feb_mission` (the supervisor's state as go/stop hooks). Each driver has a card,
 `card.yaml`; `./feb up --driver NAME` starts it, `./feb new NAME` copies the template under your name.

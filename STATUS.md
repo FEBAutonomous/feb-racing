@@ -4,6 +4,10 @@ Newest first.
 
 ## 2026-10-28 - feb new, the card is card.yaml, submit refuses a stale clone; battery gauge on the car
 
+- `feb-up` (the box's build) builds `feb_mission` and `feb_cone_ordering` from the starter kit whenever the
+  workspace has no copy, and sources them first. Before, a driver in a laptop's `stack/` that included them
+  silently ran without them; only the car (feb-stack's `shared/`) had them. Verified from an empty workspace.
+
 - `./feb new NAME [--from feb_cone_driver] [--ws DIR]`: a member's driver from the starter kit in one
   command, renamed inside and out (module, resource marker, setup.py, package.xml, launch, card);
   refuses a folder that exists, so a rerun cannot nest copies. Replaces the cp/mv/sed recipe in the

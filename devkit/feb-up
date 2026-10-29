@@ -43,6 +43,21 @@ if [ -f /tmp/feb-up.pid ] && kill -0 "$(cat /tmp/feb-up.pid)" 2>/dev/null; then
 fi
 source /opt/ros/humble/setup.bash
 source /home/autodrive_devkit/install/setup.bash
+# The shared packages every driver may include from its launch file (feb_mission, feb_cone_ordering)
+# come from the starter kit when the workspace has no copy of its own: built there, sourced first, so
+# a laptop's stack/ behaves like the car's feb-stack (whose shared/ carries the same two).
+KIT="${FEB_ROOT:-/home/feb/FEB/feb-racing}/starter_kit"
+if [ -n "$WS" ] && [ -d "$WS" ] && [ -d "$KIT" ] && [ "$(cd "$WS" && pwd)" != "$(cd "$KIT" && pwd)" ]; then
+    NEEDED=""
+    for p in feb_mission feb_cone_ordering; do
+        grep -rlq --include=package.xml "<name>$p</name>" "$WS" 2>/dev/null || NEEDED="$NEEDED $p"
+    done
+    if [ -n "$NEEDED" ]; then
+        echo "building the shared packages from the starter kit:$NEEDED ..."
+        (cd "$KIT" && colcon build --symlink-install --packages-select $NEEDED 2>&1 | grep -v "^$" | tail -n 5)
+        [ -f "$KIT/install/setup.bash" ] && source "$KIT/install/setup.bash"
+    fi
+fi
 if [ -n "$WS" ] && [ -d "$WS" ]; then
     if find "$WS" -name package.xml -not -path "*/build/*" -not -path "*/install/*" | grep -q .; then
         echo "building $WS ..."
