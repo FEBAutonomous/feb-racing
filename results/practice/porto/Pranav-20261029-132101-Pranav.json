@@ -1,0 +1,53 @@
+{
+ "schema": 1,
+ "id": "20261029-132101-Pranav",
+ "event": "practice",
+ "team": "Pranav",
+ "image": "ghcr.io/febautonomous/feb-devkit:latest",
+ "image_digest": "ghcr.io/febautonomous/feb-devkit@sha256:a4de57efb668120eb73fb805ab9a5ee17ddf4da9f7b9cfbf3aab411891e19e4a",
+ "track": "porto",
+ "mode": "time-attack",
+ "rules": {
+  "laps": 10,
+  "warmup_laps": 1,
+  "collision_penalty_s": 10.0,
+  "max_collisions": 10,
+  "timeout_s": 300.0
+ },
+ "started_at": "2026-10-29T20:21:01+00:00",
+ "duration_s": 186.15,
+ "status": "finished",
+ "laps_completed": 11,
+ "real_time_factor": 1.0,
+ "warmup_s": 26.1303,
+ "lap_times": [
+  15.751,
+  15.971,
+  15.998,
+  15.854,
+  15.869,
+  15.919,
+  16.008,
+  16.013,
+  15.959,
+  16.054
+ ],
+ "collisions": 0,
+ "collision_times": [],
+ "penalty_s": 0.0,
+ "total_s": 159.394,
+ "best_lap_s": 15.751,
+ "restricted_subscribers": {},
+ "verified": false,
+ "runner": "prantheman-machine",
+ "error": null,
+ "driver": {
+  "name": "feb_reactive_competitor",
+  "kind": "walls",
+  "stack": "ros2 launch feb_reactive_competitor drive.launch.py mode:=trackdrive",
+  "adapter": "",
+  "packages": [
+   "feb_reactive_competitor"
+  ]
+ }
+}
