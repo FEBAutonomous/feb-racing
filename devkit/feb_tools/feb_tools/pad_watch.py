@@ -4,7 +4,8 @@ still reads the old, dead one and /joy goes silent for good, so the car ignores 
 the run is restarted. This node reads the same device alongside joy_node (the js interface allows
 that) and, when the pad is producing events but /joy has been silent for `silent_after` seconds,
 ends joy_node; the launch file respawns it and it opens the new device. One button press, the
-car answers again."""
+car answers again. The same covers a pad switched on after the launch: joy_node found nothing
+at start and never looks again, so the first few seconds of pad events get it restarted."""
 import os
 import select
 import subprocess
@@ -27,6 +28,7 @@ class PadWatch(Node):
         self.fd = None
         self.last_joy = None
         self.last_event = None
+        self.active_since = None       # when the current streak of pad events began
         self.last_kick = 0.0
         self.create_subscription(Joy, "/joy", self.on_joy, 10)
         self.create_timer(0.2, self.tick)
@@ -52,6 +54,8 @@ class PadWatch(Node):
             if ready:
                 data = os.read(self.fd, 4096)
                 if data:
+                    if self.last_event is None or t - self.last_event > 1.0:
+                        self.active_since = t
                     self.last_event = t
                 else:
                     raise OSError("eof")
@@ -66,8 +70,8 @@ class PadWatch(Node):
             return                          # the pad is quiet: nothing to judge
         if self.last_joy is not None and t - self.last_joy < self.silent_after:
             return                          # joy_node is relaying: fine
-        if self.last_joy is None and t - self.last_event < self.silent_after:
-            return                          # just started: give joy_node a moment
+        if t - self.active_since < self.silent_after:
+            return                          # the pad only just started talking: give joy_node a moment
         if t - self.last_kick < 5.0:
             return
         self.last_kick = t
