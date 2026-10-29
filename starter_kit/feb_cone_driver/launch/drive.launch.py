@@ -6,7 +6,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
-# mode is the driver's mode from driver.yaml (trackdrive, inspection, ...). This driver behaves the
+# mode is the driver's mode from the card (card.yaml) (trackdrive, inspection, ...). This driver behaves the
 # same in every mode; the supervisor's speed cap is what changes. Read it here if yours differs.
 # On the car (FEB_CAR=1) the clock is the wall clock and config/<name>.car.yaml, if present, is
 # loaded on top of the base config: only the numbers that differ on the real car go there.

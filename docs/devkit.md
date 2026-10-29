@@ -74,7 +74,7 @@ the simulator's. If you wrote a node against `/autodrive/roboracer_1/...`, see "
 | `./feb update` | git pull, newer image, newer simulator app. A new image replaces the box. |
 | `./feb practice --driver NAME` | scored runs under competition rules on every practice track of the driver's kind; `--track T` for one |
 | `./feb submit` | post every clean run (finished, no collisions) not yet posted, one pull request; `--dry-run` to look first, `--all` for the rest |
-| `./feb up --driver feb_driver --mode-name inspection` | a driver by name and mode, from its `driver.yaml` |
+| `./feb up --driver feb_driver --mode-name inspection` | a driver by name and mode, from its `card.yaml` |
 
 `./feb up --help` lists the rest: `--mode`, `--cars`, `--camera`, `--look`, `--headless`, `--fps`,
 `--lidar-hz`, `--no-foxglove`, `--no-sim`, `--car`, `--max-speed`.
@@ -190,7 +190,8 @@ git.
 
 ## Driver packets and modes
 
-A driver is a ROS package with a `driver.yaml` beside its `package.xml`. The file says what the
+A driver is a ROS package with a card, `card.yaml`, beside its `package.xml` (`driver.yaml`, the
+card's name before 2026-10-28, is still read). The file says what the
 driver is for and how to start it, so the launcher, the lead and the car all read the same thing:
 
 ```yaml
@@ -216,7 +217,7 @@ The modes every driver should have, so the car can be driven the same way whoeve
 
 Add your own below those, `skidpad`, `acceleration`, `corridor`, whatever the code does. A mode
 is just a launch file and a cap; the supervisor does not care how many there are. The starter
-kit's three packages all carry a `driver.yaml` to copy from.
+kit's three packages all carry a `card.yaml`; `./feb new NAME` copies one under your name.
 
 Two optional keys: `packages:`, the list of your own packages that `feb submit` copies to the team
 repo (default: just the driver); and `adapter:`, settings for the sim adapter's throttle law. Leave
@@ -232,7 +233,7 @@ edits it by hand; `feb submit` fills it. The path from your laptop to the wheels
 1. It laps clean: `./feb practice --driver my_driver`, every practice track of its kind, zero
    collisions.
 2. `./feb submit`. Two pull requests from one command: the results to the scoreboard, and your
-   driver's code to `feb-stack`. The code half copies the packages listed in your `driver.yaml`
+   driver's code to `feb-stack`. The code half copies the packages listed in your `card.yaml`
    under `packages:` into `drivers/<your name>/`, commits on a branch named after you, pushes to
    your fork if you can't push to the repo, and opens the pull request or updates the one already
    open. A submit with nothing changed does nothing. `--no-code` posts only results,

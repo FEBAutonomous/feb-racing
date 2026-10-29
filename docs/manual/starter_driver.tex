@@ -27,7 +27,7 @@ hands it to the node, so you change behaviour here without touching code. \\
 \texttt{launch/drive.launch.py} & Starts one node, \texttt{reactive\_driver}, with the yaml;
 \texttt{use\_sim\_time} follows the box (simulator clock on a laptop, wall clock on the car). This
 is what \texttt{--driver feb\_driver} runs. \\
-\texttt{driver.yaml} & The driver's card: its name, the kind of track it drives, its modes
+\texttt{card.yaml} & The driver's card: its name, the kind of track it drives, its modes
 (\texttt{trackdrive}, \texttt{inspection}), each a launch file and a speed cap. \\
 \texttt{sysid\_probe.py}, \texttt{launch/sysid.launch.py} & Stage 2. Drives with the
 same steering but a fixed throttle schedule (three steps, a coast, a chirp) while recording a

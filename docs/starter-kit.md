@@ -20,8 +20,8 @@ at the simulator's full rate and not yet at the 10 Hz scoring rate, so it is not
 
 The kit is a set of packages, copied into your workspace as needed: `feb_driver` (the gap
 follower, the template), `feb_cone_driver` (cones), `feb_cone_ordering` (the team's cone ordering
-as a ROS service) and `feb_mission` (the supervisor's state as go/stop hooks). Each driver has a
-`driver.yaml`; `./feb up --driver NAME` starts it.
+as a ROS service) and `feb_mission` (the supervisor's state as go/stop hooks). Each driver has a card,
+`card.yaml`; `./feb up --driver NAME` starts it, `./feb new NAME` copies the template under your name.
 
 ## Stage 0: read the car
 

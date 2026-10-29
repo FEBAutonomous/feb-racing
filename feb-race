@@ -77,13 +77,17 @@ def slug(name):
 
 
 def team_drivers(team):
-    """The driver cards a team has merged into feb-stack: drivers/<slug>/<package>/driver.yaml."""
+    """The driver cards a team has merged into feb-stack: drivers/<slug>/<package>/card.yaml
+    (driver.yaml, the card's name before 2026-10-28, is still read)."""
     folder = STACK_REPO / "drivers" / slug(team)
-    out = []
-    for card in sorted(folder.glob("*/driver.yaml")):
+    out, seen = [], set()
+    for card in sorted(folder.glob("*/card.yaml")) + sorted(folder.glob("*/driver.yaml")):
+        if card.parent in seen:
+            continue
         m = yaml.safe_load(card.read_text()) or {}
         if m.get("name"):
             out.append(m)
+            seen.add(card.parent)
     return out
 
 

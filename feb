@@ -22,6 +22,7 @@ Environment overrides: FEB_SIM_APP, FEB_DEVKIT_IMAGE, FEB_DEVKIT_GUI_IMAGE, FEB_
 FEB_DEVKIT_PORT, FEB_FOXGLOVE_PORT, FEB_VNC_PORT.
 """
 import argparse
+import re
 import json
 import os
 import pathlib
@@ -408,8 +409,54 @@ def resolve_track(name):
     return name
 
 
+# ------------------------------------------------------------------ new: your own driver from the template
+
+TEMPLATES = ("feb_driver", "feb_cone_driver")
+
+
+def cmd_new(args):
+    """A new driver package in stack/ (or --ws), copied from a starter-kit template and renamed
+    inside and out: the Python module, the resource marker, every mention in setup.py, package.xml,
+    the launch file and the card. One command instead of the cp/mv/sed recipe, and it refuses to
+    touch a folder that already exists, so running it twice cannot nest anything."""
+    name, old = args.name, args.template
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+        fail(f"'{name}' is not a package name: lowercase letters, digits and underscores, starting with a letter")
+    src = ROOT / "starter_kit" / old
+    if not src.is_dir():
+        fail(f"no template {old} in starter_kit (have: {', '.join(TEMPLATES)})")
+    ws = pathlib.Path(args.ws).resolve() if args.ws else STACK
+    dst = ws / name
+    if dst.exists():
+        fail(f"{dst} already exists; pick another name, or delete that folder if it is a broken copy")
+    for card in cards(ws):
+        if (load_yaml(card) or {}).get("name") == name:
+            fail(f"a driver named {name} already exists at {card.parent}")
+    ws.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("build", "install", "log", "__pycache__", "*.pyc"))
+    (dst / old).rename(dst / name)                                  # the Python module
+    (dst / "resource" / old).rename(dst / "resource" / name)        # the ament marker
+    for f in sorted(dst.rglob("*")):
+        if not f.is_file() or f.suffix not in (".py", ".xml", ".cfg", ".yaml", ".md", ".txt"):
+            continue
+        text = f.read_text(encoding="utf-8")
+        if old in text:
+            f.write_text(text.replace(old, name), encoding="utf-8")
+    try:
+        who = json.loads(CONFIG.read_text())["team"]
+    except (OSError, KeyError, ValueError):
+        who = None
+    card = dst / CARD
+    if who and card.exists():
+        card.write_text(re.sub(r"^maintainer:.*$", f"maintainer: {who}", card.read_text(encoding="utf-8"), count=1, flags=re.M), encoding="utf-8")
+    rel = dst.relative_to(ROOT) if dst.is_relative_to(ROOT) else dst
+    print(f"{rel}: your driver, copied from {old}. Its code is {rel / name}, its numbers {rel / 'config'}, its card {rel / CARD}.")
+    print(f"./feb up --driver {name}          # builds and races it")
+    print(f"./feb practice --driver {name}    # scores it; ./feb submit posts it")
+
+
 def read_manifest(ws, name):
-    """A driver package's driver.yaml: what it is for and how to start it in each mode.
+    """A driver package's card (card.yaml): what it is for and how to start it in each mode.
 
         name: feb_driver
         kind: walls            # walls | cones | any
@@ -422,21 +469,29 @@ def read_manifest(ws, name):
         m = load_yaml(candidate) or {}
         if m.get("name") == name:
             return m, candidate.parent
-    fail(f"no driver.yaml with name '{name}' under {ws}")
+    fail(f"no card.yaml with name '{name}' under {ws} (./feb new {name} makes one from the starter kit)")
+
+
+CARD = "card.yaml"                         # the driver's card, beside its package.xml
+OLD_CARD = "driver.yaml"                   # its name before 2026-10-28; still read, so no package breaks
 
 
 def cards(ws):
-    """Every driver.yaml under a workspace, skipping colcon's build/install/log folders (they hold
-    copies and, on Windows, Linux symlinks the box made that Windows cannot even stat)."""
-    out = []
-    for candidate in pathlib.Path(ws).rglob("driver.yaml"):
-        if {"build", "install", "log"} & set(candidate.parts):
-            continue
-        try:
-            if candidate.is_file():
-                out.append(candidate)
-        except OSError:
-            continue
+    """Every driver card under a workspace: card.yaml, or driver.yaml where a package still has the
+    old name (a package with both is read from card.yaml). Skips config/ folders (config/driver.yaml
+    is a node's parameters, not a card) and colcon's build/install/log folders (they hold copies
+    and, on Windows, Linux symlinks the box made that Windows cannot even stat)."""
+    out, seen = [], set()
+    for filename in (CARD, OLD_CARD):
+        for candidate in pathlib.Path(ws).rglob(filename):
+            if {"build", "install", "log", "config"} & set(candidate.parts) or candidate.parent in seen:
+                continue
+            try:
+                if candidate.is_file():
+                    out.append(candidate)
+                    seen.add(candidate.parent)
+            except OSError:
+                continue
     return out
 
 
@@ -672,11 +727,35 @@ def practice_set(kind):
     return out
 
 
+def commits_behind(repo=None, timeout=5):
+    """How many commits this clone is behind its upstream (origin/main when the branch has none).
+    None when there is no git, no network or git is slow: a member offline is never blocked."""
+    repo = repo or ROOT
+    if not (repo / ".git").exists():
+        return None
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    try:
+        subprocess.run(["git", "-C", str(repo), "fetch", "-q"], timeout=timeout, capture_output=True, check=True, env=env)
+        up = subprocess.run(["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True)
+        ref = up.stdout.strip() if up.returncode == 0 else "origin/main"
+        n = subprocess.run(["git", "-C", str(repo), "rev-list", "--count", f"HEAD..{ref}"], capture_output=True, text=True, check=True)
+        return int(n.stdout.strip())
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError, OSError):
+        return None
+
+
+def stale_message(n):
+    return f"this copy of feb-racing is {n} commit{'s' if n != 1 else ''} behind the team's: run ./feb update"
+
+
 def cmd_practice(args):
     """Scored attempts under competition rules, on your own machine: one track with --track, or
     the driver's whole practice set (its kind's qualifying tracks) without it."""
     from febrace import rules
     from febrace.runner import Attempt
+    n = commits_behind()
+    if n:
+        print(f"feb: {stale_message(n)} when this is done; the board reruns every result on the current harness")
     kind = "all"
     if args.driver:
         args.stack, _ = driver_command(args)
@@ -739,6 +818,9 @@ def cmd_submit(args):
     """Post practice results to the scoreboard and the driver's code to the team repo, each as
     one pull request (needs the gh CLI): every clean run not yet posted, or the one named."""
     from febrace import results
+    n = commits_behind()
+    if n and not args.allow_stale:
+        fail(f"{stale_message(n)} first, then submit (--allow-stale posts anyway)")
     if args.run:
         d = pathlib.Path(args.run)
         runs = [(d, json.loads((d / "result.json").read_text()))]
@@ -830,7 +912,7 @@ def post_code(name, ws, run_results):
         subprocess.run(clone, check=True)
     shared = [p for p in packages if (TEAM_STACK / "shared" / p).is_dir()]
     if shared:
-        fail(f"{', '.join(shared)} already live in {STACK_REPO}/shared (one copy for everyone); list only your own packages in {name}'s driver.yaml")
+        fail(f"{', '.join(shared)} already live in {STACK_REPO}/shared (one copy for everyone); list only your own packages in {name}'s card.yaml")
     remotes = git_in(TEAM_STACK, "remote", capture=True).stdout.split()
     remote = "fork" if "fork" in remotes else "origin"      # your fork once you have needed one
     git_in(TEAM_STACK, "fetch", "-q", remote)
@@ -884,7 +966,7 @@ def main():
     up.add_argument("--track", default="loop", help="track folder name in ./tracks, or a path")
     up.add_argument("--mode", choices=["manual", "autonomous"], help="default: autonomous with --stack, manual without")
     up.add_argument("--stack", default="", help='command that drives, e.g. "ros2 launch feb_driver drive.launch.py"')
-    up.add_argument("--driver", help="a driver package by name: its driver.yaml says how to launch it (see --mode-name)")
+    up.add_argument("--driver", help="a driver package by name: its card.yaml says how to launch it (see --mode-name)")
     up.add_argument("--mode-name", dest="mode_name", help="which of the driver's modes (default: its default_mode)")
     up.add_argument("--ws", help="workspace folder to build and source (default: feb-racing/stack)")
     up.add_argument("--headless", action="store_true", help="no window (organiser harness)")
@@ -905,7 +987,7 @@ def main():
     practice = sub.add_parser("practice", help="scored attempts under competition rules: the driver's practice set, or one --track")
     practice.add_argument("--track", help="one track (default: every qualifying track of the driver's kind; 'all' for all of them)")
     practice.add_argument("--stack", default="", help='e.g. "ros2 launch feb_driver drive.launch.py"')
-    practice.add_argument("--driver", help="a driver package by name (its driver.yaml)")
+    practice.add_argument("--driver", help="a driver package by name (its card.yaml)")
     practice.add_argument("--mode-name", dest="mode_name", help="which of its modes")
     practice.add_argument("--ws", help="workspace folder with your packages (default: feb-racing/stack)")
     practice.add_argument("--laps", type=int, default=10)
@@ -917,7 +999,13 @@ def main():
     submit.add_argument("--dry-run", action="store_true", help="list what would be posted")
     submit.add_argument("--no-code", dest="code", action="store_false", help="results only, do not push the driver's code")
     submit.add_argument("--no-results", dest="results", action="store_false", help="code only, do not post the results")
+    submit.add_argument("--allow-stale", dest="allow_stale", action="store_true", help="post even when this clone is behind the team's feb-racing")
     submit.set_defaults(func=cmd_submit)
+    new = sub.add_parser("new", help="your own driver package in stack/, copied from the starter kit and renamed")
+    new.add_argument("name", help="the package name, e.g. pranav_driver (lowercase, digits, underscores)")
+    new.add_argument("--from", dest="template", default="feb_driver", choices=TEMPLATES, help="the starter package to copy (default feb_driver)")
+    new.add_argument("--ws", help="workspace folder to create it in (default: feb-racing/stack)")
+    new.set_defaults(func=cmd_new)
     setup = sub.add_parser("setup", help="install prerequisites, make the box, optionally set your team name")
     setup.add_argument("--team", "--name", dest="team", help="how your results are listed: your name (or a team name) as in submissions.yaml")
     setup.set_defaults(func=cmd_setup)

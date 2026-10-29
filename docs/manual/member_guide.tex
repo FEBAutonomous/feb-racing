@@ -196,19 +196,18 @@ runs whenever \cmd{feb up} does.
 
 \section{A driver is one package}\label{sec:package}
 
-Copy the template and rename it, inside as well as outside; a ROS package carries its name in
-four places, so the last two lines do the renaming for you:
+One command copies the template into \file{stack/} under your name and renames it inside and out
+(a ROS package carries its name in four places); pick a name that is yours, it is what the
+scoreboard and the car will call the driver:
 
 \begin{lstlisting}
-cp -r starter_kit/feb_driver stack/my_driver && cd stack/my_driver
-mv feb_driver my_driver && mv resource/feb_driver resource/my_driver
-grep -rl feb_driver . | xargs sed -i 's/feb_driver/my_driver/g'
-cd ../..
+./feb new my_driver                 # --from feb_cone_driver for the cone template
+./feb up --driver my_driver         # builds and races it
 \end{lstlisting}
 
-Mac: \cmd{sed -i ''} with the empty quotes, or run those lines inside \cmd{./feb shell}, whose
-\cmd{sed} is the Linux one. Windows: open \cmd{./feb shell} and type the four lines at its prompt. Then
-\cmd{./feb up -{}-driver my\_driver} builds and races it.
+It refuses to touch a folder that already exists, so it cannot nest copies; a broken copy from
+before is deleted first (\cmd{rm -rf stack/my\_driver}). Same command on every OS, in a laptop
+terminal.
 
 \begin{tabularx}{\linewidth}{lX}
 \toprule
@@ -218,7 +217,7 @@ File & Holds \\
 \file{config/driver.yaml} & every tuning number, one per line with a comment \\
 \file{config/driver.car.yaml} & only the numbers that differ on the real car; loaded on top, on the car only \\
 \file{launch/drive.launch.py} & starts the node with the yaml; includes \texttt{feb\_mission} if present \\
-\file{driver.yaml} & the driver's card (below) \\
+\file{card.yaml} & the driver's card (below) \\
 \bottomrule
 \end{tabularx}
 
@@ -315,6 +314,11 @@ of it.
 warm-up lap and ten timed laps, 300~s limit, 10~s per collision and disqualified above ten, at the
 10~Hz scoring rate. The simulator window shows unless you add \cmd{-{}-headless}. Each run lands in
 \file{runs/<id>/} with a result file, a bag and the logs.
+
+Both commands check that your copy of \file{feb-racing} is current: \texttt{practice} prints a
+line when it is behind, \texttt{submit} refuses until you run \cmd{./feb update} (the board reruns
+every result on the current harness, so a stale one may not verify); \cmd{-{}-allow-stale}
+overrides. Offline, nothing is checked.
 
 \texttt{submit} does two things from one command. It posts every clean run (finished, no
 collisions) not yet posted to the scoreboard as one pull request to \file{feb-racing}, which
@@ -413,7 +417,7 @@ Running:
 Symptom & Fix \\
 \midrule
 \texttt{already running} on \cmd{./feb up} & a previous run is still going, its terminal was closed: \cmd{./feb stop} \\
-\texttt{no driver.yaml with name '...'} & no card with that \cmd{name:} in \file{stack/} or the starter kit: section~\ref{sec:package} \\
+\texttt{no card.yaml with name '...'} & no card with that \cmd{name:} in \file{stack/} or the starter kit: \cmd{./feb new NAME}, section~\ref{sec:package} \\
 \texttt{ros2: command not found} & you are in a laptop terminal: \cmd{./feb shell} \\
 my node is not there & it did not build: \cmd{./feb logs -n 100}, or \cmd{colcon build} in the workspace and read it \\
 the simulator says not connected & the house nodes are still starting; \cmd{./feb logs -f} \\

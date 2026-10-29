@@ -2,6 +2,22 @@
 
 Newest first.
 
+## 2026-10-28 - feb new, the card is card.yaml, submit refuses a stale clone; battery gauge on the car
+
+- `./feb new NAME [--from feb_cone_driver] [--ws DIR]`: a member's driver from the starter kit in one
+  command, renamed inside and out (module, resource marker, setup.py, package.xml, launch, card);
+  refuses a folder that exists, so a rerun cannot nest copies. Replaces the cp/mv/sed recipe in the
+  member guide and quickstart, which a member had run twice and got `my_driver/my_driver/my_driver`.
+- The driver's card is `card.yaml` (was `driver.yaml`, a name clash with `config/driver.yaml`).
+  `driver.yaml` is still read by the launcher and the harness, so every merged package keeps working;
+  the starter kit's three packages are renamed.
+- `feb practice` prints one line when the clone is behind the team's feb-racing (a 5 s fetch, silent
+  offline); `feb submit` refuses until `./feb update`, `--allow-stale` overrides.
+- The car: `feb_tools battery` publishes `/feb/battery` and `/feb/battery_text` from the VESC's input
+  voltage (commit 2c39d27). A drained pack (8.5 V resting after a 45 min drive on 20%) browned the
+  Jetson out: bookmarked fixes are a driving floor in the supervisor, a stall cut, the gauge on the
+  loaded voltage, and the VESC cutoff at 3.3 V/cell.
+
 ## 2026-10-24 (night) - feb_racer: the walls memory racer, clean under scoring
 
 `stack/feb_racer` (Pranav's stack, reaches `feb-stack` through submit): the RoboRacer League 6
