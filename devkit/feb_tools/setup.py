@@ -25,5 +25,6 @@ setup(
                                       "sim_adapter = feb_tools.sim_adapter:main",
                                       "key_joy = feb_tools.key_joy:main",
                                       "scan_rotate = feb_tools.scan_rotate:main",
-                                      "battery = feb_tools.battery:main"]},
+                                      "battery = feb_tools.battery:main",
+                                      "pad_watch = feb_tools.pad_watch:main"]},
 )

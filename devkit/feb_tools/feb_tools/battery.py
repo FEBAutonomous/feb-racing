@@ -5,6 +5,11 @@ Reads /sensors/core (vesc_msgs/VescStateStamped: input voltage and current) and 
   /feb/battery_text  std_msgs/String           "11.2 V  48%  ~22 min to 20%, ~35 min to stop"
 once a second, and logs a warning at 20% and an error at 10%.
 
+The text line also carries the lowest voltage measured under load in the last few seconds ("sag"):
+that is the number the VESC and the Jetson's converter cut out on, and on an old or empty pack it
+drops long before the resting estimate looks bad. A sag under `sag_warn` while the motor pulls
+current is warned about.
+
 Percentage comes from a LiPo open-circuit-voltage table after undoing the load sag
 (v_rest = v_in + i * pack_resistance). Minutes come from the remaining charge divided by a
 one-minute average of the current the pack really supplies: what the VESC sees plus
@@ -48,6 +53,8 @@ class Battery(Node):
         self.declare_parameter("recharge_soc", 0.20)
         self.declare_parameter("stop_cell_voltage", 3.50)    # 10.5 V on 3S
         self.declare_parameter("source_topic", "/sensors/core")
+        self.declare_parameter("sag_warn", 10.5)               # V measured under load: warn below this
+        self.declare_parameter("sag_window", 3.0)              # s the sag figure looks back
         g = self.get_parameter
         self.cells = int(g("cells").value)
         self.cap = float(g("capacity_ah").value)
@@ -55,6 +62,10 @@ class Battery(Node):
         self.base_i = float(g("baseline_current").value)
         self.recharge = float(g("recharge_soc").value)
         self.stop_v = float(g("stop_cell_voltage").value)
+        self.sag_warn = float(g("sag_warn").value)
+        self.sag_window = float(g("sag_window").value)
+        self.samples = []            # (t, v, i) recent raw readings for the sag figure
+        self.sag_said = None
 
         self.v = None
         self.i = 0.0
@@ -75,6 +86,10 @@ class Battery(Node):
         self.v = float(msg.state.voltage_input)
         self.i = max(0.0, float(msg.state.current_input))
         self.last_msg = time.monotonic()
+        self.samples.append((self.last_msg, self.v, self.i))
+        cut = self.last_msg - self.sag_window
+        while self.samples and self.samples[0][0] < cut:
+            self.samples.pop(0)
 
     def tick(self):
         if self.v is None or self.last_msg is None or time.monotonic() - self.last_msg > 3.0:
@@ -107,9 +122,14 @@ class Battery(Node):
         self.pub.publish(bs)
 
         pct = int(round(self.soc_f * 100))
-        text = "%.1f V  %d%%  ~%d min to %d%%, ~%d min to stop  (%.1f A)" % (
-            self.v, pct, to_recharge, int(self.recharge * 100), to_stop, pack_i)
+        sag = min(v for _, v, _ in self.samples) if self.samples else self.v
+        loaded = any(i > 3.0 for _, _, i in self.samples)
+        text = "%.1f V  %d%%  ~%d min to %d%%, ~%d min to stop  (%.1f A, sag %.1f V)" % (
+            self.v, pct, to_recharge, int(self.recharge * 100), to_stop, pack_i, sag)
         self.pub_text.publish(String(data=text))
+        if loaded and sag < self.sag_warn and (self.sag_said is None or time.monotonic() - self.sag_said > 10.0):
+            self.sag_said = time.monotonic()
+            self.get_logger().warn("battery sags to %.1f V under load (resting ~%.1f V): the pack is nearly empty or tired, stop soon" % (sag, v_rest))
 
         if cell <= self.stop_v:
             self.get_logger().error("BATTERY EMPTY %.1f V: stop and charge now" % self.v, throttle_duration_sec=10.0)

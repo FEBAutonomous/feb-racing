@@ -9,9 +9,18 @@ States, published on /feb/state:
                 stop. Brakes, and leaves for IDLE only once every button is released and the
                 sensors have been healthy for a second.
 
-In: /drive (the stack, AckermannDriveStamped), /joy, /scan, /odom.  Out: /ackermann_cmd at 50 Hz,
-consumed by the sim adapter or the VESC driver. Same code in the simulator and on the car; the
-simulator runs it with require_deadman false, the car with true.
+In: /drive (the stack, AckermannDriveStamped), /joy, /scan, /odom; on the car also /feb/battery
+(the gauge) and /sensors/core (the VESC).  Out: /ackermann_cmd at 50 Hz, consumed by the sim
+adapter or the VESC driver. Same code in the simulator and on the car; the simulator runs it with
+require_deadman false, the car with true.
+
+The car's three guards, all off unless car.yaml sets them (the simulator has no battery or VESC):
+    battery_floor   V resting: below it the car will not leave IDLE ("charge it" on /feb/state)
+    battery_cut     V measured under load: below it while driving, STOP (the pack is collapsing)
+    stall_current   A motor current with the wheels not turning for stall_time: throttle cut for
+                    stall_release seconds (the car is pushing against something; pack, gears and
+                    bumper all prefer it stops)
+    speed_ceiling   m/s, the car's own cap on top of the driver card's: the lower wins
 
 Gamepad defaults are the 8BitDo Ultimate 2C in XInput mode under joy_node: left stick up/down
 (axis 1) is speed, right stick left/right (axis 3) is steering, LB (button 4) is the manual
@@ -24,8 +33,13 @@ import rclpy
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
-from sensor_msgs.msg import Joy, LaserScan
+from sensor_msgs.msg import BatteryState, Joy, LaserScan
 from std_msgs.msg import String
+
+try:
+    from vesc_msgs.msg import VescStateStamped
+except ImportError:                      # an image without the VESC packages: no stall guard
+    VescStateStamped = None
 
 IDLE, MANUAL, AUTONOMOUS, STOP = "IDLE", "MANUAL", "AUTONOMOUS", "STOP"
 
@@ -36,7 +50,9 @@ class Supervisor(Node):
         defaults = dict(require_deadman=True, max_speed=1.0, max_steer=0.5236, scan_timeout=0.5, drive_timeout=0.5,
                         ttc_stop=0.0, recover_after=1.0, rate=50.0,
                         manual_button=4, auto_button=5, stop_button=6, speed_axis=1, steer_axis=3,
-                        manual_speed=1.0, manual_steer=0.4)
+                        manual_speed=1.0, manual_steer=0.4,
+                        battery_floor=0.0, battery_cut=0.0, speed_ceiling=0.0,
+                        stall_current=0.0, stall_time=0.5, stall_erpm=400.0, stall_release=1.0)
         for key, value in defaults.items():
             self.declare_parameter(key, value)
         self.p = {k: self.get_parameter(k).value for k in defaults}
@@ -51,6 +67,15 @@ class Supervisor(Node):
         self.ttc = math.inf
         self.speed = 0.0
         self.healthy_since = None
+        self.batt_rest = None          # resting-voltage estimate from the gauge (sum of its cell estimates)
+        self.batt_raw = None           # measured pack voltage, sags under load
+        self.batt_t = None
+        self.motor_i = 0.0             # VESC motor current, A
+        self.motor_rpm = 0.0           # VESC electrical rpm
+        self.vesc_t = None
+        self.stall_since = None
+        self.stalled_until = 0.0
+        self.floor_said = None
 
         self.pub_cmd = self.create_publisher(AckermannDriveStamped, "/ackermann_cmd", 10)
         self.pub_state = self.create_publisher(String, "/feb/state", 10)
@@ -58,10 +83,21 @@ class Supervisor(Node):
         self.create_subscription(Joy, "/joy", self.on_joy, 10)
         self.create_subscription(LaserScan, "/scan", self.on_scan, 10)
         self.create_subscription(Odometry, "/odom", self.on_odom, 10)
+        self.create_subscription(BatteryState, "/feb/battery", self.on_battery, 10)
+        if VescStateStamped is not None:
+            self.create_subscription(VescStateStamped, "/sensors/core", self.on_vesc, 10)
         self.create_timer(1.0 / self.p["rate"], self.tick)
         self.create_timer(0.5, self.announce)
-        self.get_logger().info("supervisor: %s, speed cap %.1f m/s" %
-                               ("dead-man required" if self.p["require_deadman"] else "no dead-man (simulator)", self.p["max_speed"]))
+        self.cap = self.p["max_speed"]
+        if self.p["speed_ceiling"] > 0:
+            self.cap = min(self.cap, self.p["speed_ceiling"])
+        guards = [g for g, on in (("battery floor %.1f V" % self.p["battery_floor"], self.p["battery_floor"] > 0),
+                                  ("sag cut %.1f V" % self.p["battery_cut"], self.p["battery_cut"] > 0),
+                                  ("stall cut %.0f A" % self.p["stall_current"], self.p["stall_current"] > 0 and VescStateStamped is not None)) if on]
+        self.get_logger().info("supervisor: %s, speed cap %.1f m/s%s%s" %
+                               ("dead-man required" if self.p["require_deadman"] else "no dead-man (simulator)", self.cap,
+                                " (car ceiling %.1f)" % self.p["speed_ceiling"] if 0 < self.p["speed_ceiling"] < self.p["max_speed"] else "",
+                                ", " + ", ".join(guards) if guards else ""))
 
     # ---------------------------------------------------------------- inputs
 
@@ -78,6 +114,44 @@ class Supervisor(Node):
 
     def on_odom(self, msg):
         self.speed = msg.twist.twist.linear.x
+
+    def on_battery(self, msg):
+        self.batt_raw = float(msg.voltage)
+        cells = [c for c in msg.cell_voltage if c == c]      # the gauge's resting estimate per cell (nan-free)
+        self.batt_rest = sum(cells) if cells else self.batt_raw
+        self.batt_t = self.now()
+
+    def on_vesc(self, msg):
+        self.motor_i = abs(float(msg.state.current_motor))
+        self.motor_rpm = abs(float(msg.state.speed))
+        self.vesc_t = self.now()
+
+    def battery_fresh(self):
+        return self.batt_t is not None and self.now() - self.batt_t < 3.0
+
+    def under_floor(self):
+        """The resting voltage the gauge reports is under the floor: the car must not start a drive."""
+        return self.p["battery_floor"] > 0 and self.battery_fresh() and self.batt_rest < self.p["battery_floor"]
+
+    def stalled(self, asked):
+        """Throttle is asked for, the motor pulls stall_current, the wheels do not turn: for
+        stall_time that is a stall, and the throttle is cut for stall_release seconds."""
+        t = self.now()
+        if self.p["stall_current"] <= 0 or self.vesc_t is None or t - self.vesc_t > 0.5:
+            return False
+        if t < self.stalled_until:
+            return True
+        pushing = asked and self.motor_i > self.p["stall_current"] and self.motor_rpm < self.p["stall_erpm"]
+        if pushing:
+            self.stall_since = self.stall_since or t
+            if t - self.stall_since > self.p["stall_time"]:
+                self.stalled_until = t + self.p["stall_release"]
+                self.stall_since = None
+                self.get_logger().warn("stall: %.0f A with the wheels stopped, throttle cut for %.1f s" % (self.motor_i, self.p["stall_release"]))
+                return True
+        else:
+            self.stall_since = None
+        return False
 
     def on_scan(self, msg):
         self.scan_t = self.now()
@@ -115,6 +189,8 @@ class Supervisor(Node):
                 return "collision imminent (ttc %.2f s)" % self.ttc
         if self.button("stop_button"):
             return "stop button"
+        if self.state in (MANUAL, AUTONOMOUS) and self.p["battery_cut"] > 0 and self.battery_fresh() and self.batt_raw < self.p["battery_cut"]:
+            return "battery sagging to %.1f V under load: the pack is empty, charge it" % self.batt_raw
         return None
 
     def tick(self):
@@ -130,6 +206,12 @@ class Supervisor(Node):
                     self.go(IDLE, "recovered")
             else:
                 self.healthy_since = None
+        elif (manual or auto) and self.state == IDLE and self.under_floor():
+            why = "battery %.1f V resting, under the %.1f V floor: charge it" % (self.batt_rest, self.p["battery_floor"])
+            if self.floor_said is None or t - self.floor_said > 5.0:
+                self.get_logger().warn("not starting: " + why)
+                self.floor_said = t
+            self.reason = why                  # stays IDLE; the reason says why on /feb/state
         elif manual:
             self.go(MANUAL, "manual button")
         elif auto or (not self.p["require_deadman"] and self.drive_t and t - self.drive_t < self.p["drive_timeout"]):
@@ -145,7 +227,9 @@ class Supervisor(Node):
             cmd.drive.steering_angle = self.axis("steer_axis") * self.p["manual_steer"]
         elif self.state == AUTONOMOUS and self.drive_t and t - self.drive_t < self.p["drive_timeout"]:
             cmd.drive = self.drive.drive
-        cap = self.p["max_speed"]
+        if self.stalled(abs(cmd.drive.speed) > 0.05):
+            cmd.drive.speed = 0.0
+        cap = self.cap
         cmd.drive.speed = max(-cap, min(cap, cmd.drive.speed))
         cmd.drive.steering_angle = max(-self.p["max_steer"], min(self.p["max_steer"], cmd.drive.steering_angle))
         self.pub_cmd.publish(cmd)

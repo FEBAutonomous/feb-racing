@@ -61,6 +61,13 @@ supervisor:
     stop_button: 10
     speed_axis: 1
     steer_axis: 2
+    # the car's guards (2026-10-29, after a 20% pack was driven flat and browned the Jetson out)
+    battery_floor: 11.6            # V resting (the gauge's estimate): below it the car stays IDLE and says "charge it"
+    battery_cut: 10.0              # V measured under load while driving: STOP, the pack is collapsing
+    stall_current: 20.0            # A motor current with the wheels stopped for stall_time: throttle cut
+    stall_time: 0.5                # s
+    stall_release: 1.0             # s of zero throttle after a stall
+    speed_ceiling: 3.0             # m/s, the car's own cap; the driver card's cap applies under it
 
 battery:
   ros__parameters:

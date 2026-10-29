@@ -17,7 +17,8 @@ def generate_launch_description():
         Node(package="rplidar_ros", executable="rplidar_node", name="rplidar_node", parameters=[cfg], output="screen",
              remappings=[("scan", "scan_raw")]),
         Node(package="feb_tools", executable="scan_rotate", name="scan_rotate", parameters=[cfg], output="screen"),   # scan_raw -> /scan, nose at zero
-        Node(package="joy", executable="joy_node", name="joy", parameters=[cfg]),
+        Node(package="joy", executable="joy_node", name="joy", parameters=[cfg], respawn=True, respawn_delay=1.0),
+        Node(package="feb_tools", executable="pad_watch", name="pad_watch", parameters=[cfg], output="screen"),   # restarts joy_node when the pad comes back from sleep
         Node(package="feb_tools", executable="battery", name="battery", parameters=[cfg], output="screen"),   # /feb/battery from the VESC's voltage
         Node(package="tf2_ros", executable="static_transform_publisher", name="static_baselink_to_laser",
              arguments=["0.27", "0.0", "0.11", "0.0", "0.0", "0.0", "base_link", "laser"]),

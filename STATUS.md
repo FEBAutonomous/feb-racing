@@ -2,6 +2,22 @@
 
 Newest first.
 
+## 2026-10-29 - the car's guards: battery floor, sag cut, stall cut, speed ceiling, pad watchdog
+
+After the 2026-10-28 brownout (a 20% pack driven for 45 min, then a stall at a wall sagged it to
+8.9 V, the VESC cut the motor and the Jetson rebooted in a loop), the supervisor grew four guards,
+all off unless car.yaml sets them, so the simulator is unchanged:
+- `battery_floor` 11.6 V: under it (the gauge's resting estimate) the car stays IDLE and /feb/state
+  says "charge it".
+- `battery_cut` 10.0 V: measured under load while driving, STOP.
+- `stall_current` 20 A with the wheels stopped for 0.5 s: throttle cut for 1 s, logged.
+- `speed_ceiling` 3.0 m/s: the car's own cap, applied under the driver card's.
+The gauge (`feb_tools battery`) now also reports the lowest voltage seen under load ("sag") and warns
+under 10.5 V. `feb_tools pad_watch` restarts joy_node (now respawned by the launch) when the pad
+sends events but /joy is silent, the 8BitDo coming back from sleep. Guards exercised with fake
+topics in the box (floor, ceiling, stall, release, sag, recovery: all pass); simulator regression
+run clean. Still Pranav's: the VESC's own cutoff to 10.2/9.9 V in VESC Tool.
+
 ## 2026-10-28 - feb new, the card is card.yaml, submit refuses a stale clone; battery gauge on the car
 
 - `feb-up` (the box's build) builds `feb_mission` and `feb_cone_ordering` from the starter kit whenever the
