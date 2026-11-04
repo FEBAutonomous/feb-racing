@@ -3,14 +3,29 @@ which feb_supervisor replaces): VESC motor and servo, VESC odometry, RPLidar S2,
 Parameters in config/car.yaml. Needs the udev rules from the RoboRacer guide (/dev/sensors/*).
 First driven 2026-10-18; see docs/build-car.md, Session 4."""
 import os
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
 
+def camera_nodes(cfg):
+    """The RealSense D435if on the front bumper: colour only, 640x480 at 30 Hz, on the contract's
+    /camera/color/image_raw. Skipped (with a note) on an image without the realsense2_camera package."""
+    try:
+        get_package_share_directory("realsense2_camera")
+    except PackageNotFoundError:
+        print("car.launch: realsense2_camera not installed in this image, no camera (./feb update brings it)")
+        return []
+    return [Node(package="realsense2_camera", executable="realsense2_camera_node", name="camera", namespace="",
+                 parameters=[cfg, {"enable_color": True, "enable_depth": False, "enable_infra1": False, "enable_infra2": False,
+                                   "enable_gyro": False, "enable_accel": False, "rgb_camera.color_profile": "640x480x30",
+                                   "rgb_camera.profile": "640x480x30"}],
+                 output="screen", respawn=True, respawn_delay=2.0)]
+
+
 def generate_launch_description():
     cfg = os.path.join(get_package_share_directory("feb_tools"), "config", "car.yaml")
-    return LaunchDescription([
+    return LaunchDescription(camera_nodes(cfg) + [
         Node(package="vesc_driver", executable="vesc_driver_node", name="vesc_driver_node", parameters=[cfg], output="screen"),
         Node(package="vesc_ackermann", executable="ackermann_to_vesc_node", name="ackermann_to_vesc_node", parameters=[cfg]),
         Node(package="vesc_ackermann", executable="vesc_to_odom_node", name="vesc_to_odom_node", parameters=[cfg]),
