@@ -17,6 +17,7 @@ FIXED_SPACING = 76.2                             # bar A: exactly 3.000 in, as m
 M4_CLEAR = 4.5                                   # slot and spacer hole width
 TRIPOD = 6.6                                     # 1/4-20 clearance
 DISC_D, DISCS = 16.0, 4                          # spacer discs, two per side = 12 mm each side
+SMALL_D, SMALLS = 10.0, 4                        # the same spacers slimmer, 10 mm outer, if the 16s crowd the bumper
 
 def slot(x, y, r, half):
     return [('L', x-half, y+r, x+half, y+r), ('L', x-half, y-r, x+half, y-r),
@@ -50,6 +51,9 @@ parts = place(barA, 0, 0)
 parts += place(barB, 0, -(BAR_H + 5.0))
 for i in range(DISCS):
     parts += place(disc, DISC_D/2 + i*(DISC_D + 4.0), -(BAR_H + 5.0 + DISC_D/2 + 6.0))
+small = hole(0, 0, SMALL_D) + hole(0, 0, M4_CLEAR)
+for i in range(SMALLS):
+    parts += place(small, SMALL_D/2 + i*(SMALL_D + 4.0), -(BAR_H + 5.0 + DISC_D + 6.0 + SMALL_D/2 + 6.0))
 
 def dxf(items, path):
     o = ['0','SECTION','2','HEADER','9','$INSUNITS','70','4','0','ENDSEC','0','SECTION','2','ENTITIES']
