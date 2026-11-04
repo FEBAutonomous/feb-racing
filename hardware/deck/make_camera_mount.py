@@ -1,6 +1,6 @@
 """The RealSense D435if bumper mount for the 1:10 car, laser cut from the 6 mm deck acrylic.
 
-Two bars (A: holes at exactly 3.000 in, as measured; B: slots for 74 to 77 mm, the slack), each on two spacer stacks over the Traxxas front bumper screws (M4; the two holes are slots so
+Three bars (A: holes at exactly 3.000 in, as measured; B: slots for 74 to 77 mm, the slack; C: slotted with the bolts behind the camera, 34 mm deep), each on two spacer stacks over the Traxxas front bumper screws (M4; the two holes are slots so
 a 74 to 77 mm spacing both fit), the camera sitting flat on the bar held by its 1/4-20 tripod
 socket with a short screw from below (the head sits in the 12 mm gap under the bar). Four discs
 make the two 12 mm spacers (two per side); M4 x 30 bolts go bar -> spacers -> bumper plate -> the
@@ -44,16 +44,25 @@ half_len = (SLOT_SPACING[1] - SLOT_SPACING[0]) / 4.0          # each slot covers
 mid = (SLOT_SPACING[0] + SLOT_SPACING[1]) / 4.0                # slot centre from the bar centre
 for s in (-1, 1):
     barB += slot(cx + s*mid, cy, M4_CLEAR/2, half_len)
+# bar C: the bumper bolts behind the camera instead of under it. 34 mm deep; the camera sits on the
+# front 25 mm with its 1/4-20 at y 12.5, the M4 slots run along y 29.5 so bolt heads and washers
+# (9 mm) clear the camera body entirely. Slotted like B.
+C_H, C_Y = 34.0, 29.5
+barC = rrect(0, 0, BAR_W, C_H, BAR_R) + hole(cx, 12.5, TRIPOD)
+for s in (-1, 1):
+    barC += slot(cx + s*mid, C_Y, M4_CLEAR/2, half_len)
 disc = hole(0, 0, DISC_D) + hole(0, 0, M4_CLEAR)
 
 # sheet layout: bar A top-left, bar B under it, discs in a row under that
 parts = place(barA, 0, 0)
 parts += place(barB, 0, -(BAR_H + 5.0))
+parts += place(barC, 0, -(2*BAR_H + 10.0 + (C_H - BAR_H)))
+y0 = -(2*BAR_H + 10.0 + (C_H - BAR_H))                         # bottom of bar C
 for i in range(DISCS):
-    parts += place(disc, DISC_D/2 + i*(DISC_D + 4.0), -(BAR_H + 5.0 + DISC_D/2 + 6.0))
+    parts += place(disc, DISC_D/2 + i*(DISC_D + 4.0), y0 - (DISC_D/2 + 6.0))
 small = hole(0, 0, SMALL_D) + hole(0, 0, M4_CLEAR)
 for i in range(SMALLS):
-    parts += place(small, SMALL_D/2 + i*(SMALL_D + 4.0), -(BAR_H + 5.0 + DISC_D + 6.0 + SMALL_D/2 + 6.0))
+    parts += place(small, SMALL_D/2 + i*(SMALL_D + 4.0), y0 - (DISC_D + 6.0 + SMALL_D/2 + 6.0))
 
 def dxf(items, path):
     o = ['0','SECTION','2','HEADER','9','$INSUNITS','70','4','0','ENDSEC','0','SECTION','2','ENTITIES']
