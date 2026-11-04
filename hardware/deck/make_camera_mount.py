@@ -6,7 +6,7 @@ socket with a short screw from below (the head sits in the 12 mm gap under the b
 make the two 12 mm spacers (two per side); M4 x 30 bolts go bar -> spacers -> bumper plate -> the
 bumper's catcher, like the original screws.
 
-Outputs: camera_mount.dxf (part geometry, mm) and camera_mount_laser_12x6in.pdf (a 12 x 6 in
+Outputs: camera_mount.dxf (part geometry, mm) and camera_mount_laser_32x18in.pdf (a 32 x 18 in
 artboard, 1:1, red hairlines, parts 20 mm from the top-left corner, Jacobs lasers)."""
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
@@ -76,6 +76,6 @@ def pdf(items, path, sheet_w_in=12, sheet_h_in=6, margin=20.0):
     c.showPage(); c.save()
 
 dxf(parts, 'camera_mount.dxf')
-pdf(parts, 'camera_mount_laser_12x6in.pdf')
+pdf(parts, 'camera_mount_laser_32x18in.pdf', sheet_w_in=32, sheet_h_in=18)
 print("bars %.0f x %.0f mm: A holes %.1f mm apart (%.3f in), B slots covering %.1f to %.1f mm; tripod hole %.1f; %d discs %.0f mm" %
       (BAR_W, BAR_H, FIXED_SPACING, FIXED_SPACING/25.4, 2*(mid-half_len), 2*(mid+half_len), TRIPOD, DISCS, DISC_D))
