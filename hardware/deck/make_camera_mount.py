@@ -1,6 +1,6 @@
 """The RealSense D435if bumper mount for the 1:10 car, laser cut from the 6 mm deck acrylic.
 
-One bar on two spacer stacks over the Traxxas front bumper screws (M4; the two holes are slots so
+Two bars (A: holes at exactly 3.000 in, as measured; B: slots for 74 to 77 mm, the slack), each on two spacer stacks over the Traxxas front bumper screws (M4; the two holes are slots so
 a 74 to 77 mm spacing both fit), the camera sitting flat on the bar held by its 1/4-20 tripod
 socket with a short screw from below (the head sits in the 12 mm gap under the bar). Four discs
 make the two 12 mm spacers (two per side); M4 x 30 bolts go bar -> spacers -> bumper plate -> the
@@ -11,8 +11,9 @@ artboard, 1:1, red hairlines, parts 20 mm from the top-left corner, Jacobs laser
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 
-BAR_W, BAR_H, BAR_R = 100.0, 30.0, 4.0          # mm; the D435 is 90 mm wide
-SLOT_SPACING = (74.0, 77.0)                      # bumper screw centres, min and max to cover
+BAR_W, BAR_H, BAR_R = 96.0, 25.0, 3.0           # mm; the D435 is 90 x 25 mm in plan, the bar matches its depth
+SLOT_SPACING = (74.0, 77.0)                      # bar B: bumper screw centres, min and max to cover
+FIXED_SPACING = 76.2                             # bar A: exactly 3.000 in, as measured
 M4_CLEAR = 4.5                                   # slot and spacer hole width
 TRIPOD = 6.6                                     # 1/4-20 clearance
 DISC_D, DISCS = 16.0, 4                          # spacer discs, two per side = 12 mm each side
@@ -31,20 +32,24 @@ def place(items, ox, oy):
         else: out.append((it[0], it[1]+ox, it[2]+oy) + tuple(it[3:]))
     return out
 
-# the bar, origin at its bottom-left
-bar = rrect(0, 0, BAR_W, BAR_H, BAR_R)
+# bar A: round M4 holes at exactly the measured spacing; bar B: slots with the slack. Both: the
+# camera's 1/4-20 in the middle. Origin at each bar's bottom-left.
 cx, cy = BAR_W/2, BAR_H/2
+barA = rrect(0, 0, BAR_W, BAR_H, BAR_R) + hole(cx, cy, TRIPOD)
+for s in (-1, 1):
+    barA += hole(cx + s*FIXED_SPACING/2, cy, M4_CLEAR)
+barB = rrect(0, 0, BAR_W, BAR_H, BAR_R) + hole(cx, cy, TRIPOD)
 half_len = (SLOT_SPACING[1] - SLOT_SPACING[0]) / 4.0          # each slot covers half the spread
 mid = (SLOT_SPACING[0] + SLOT_SPACING[1]) / 4.0                # slot centre from the bar centre
 for s in (-1, 1):
-    bar += slot(cx + s*mid, cy, M4_CLEAR/2, half_len)
-bar += hole(cx, cy, TRIPOD)
+    barB += slot(cx + s*mid, cy, M4_CLEAR/2, half_len)
 disc = hole(0, 0, DISC_D) + hole(0, 0, M4_CLEAR)
 
-# sheet layout: bar top-left, discs in a row under it
-parts = place(bar, 0, 0)
+# sheet layout: bar A top-left, bar B under it, discs in a row under that
+parts = place(barA, 0, 0)
+parts += place(barB, 0, -(BAR_H + 5.0))
 for i in range(DISCS):
-    parts += place(disc, DISC_D/2 + i*(DISC_D + 4.0), -(DISC_D/2 + 6.0))
+    parts += place(disc, DISC_D/2 + i*(DISC_D + 4.0), -(BAR_H + 5.0 + DISC_D/2 + 6.0))
 
 def dxf(items, path):
     o = ['0','SECTION','2','HEADER','9','$INSUNITS','70','4','0','ENDSEC','0','SECTION','2','ENTITIES']
@@ -72,5 +77,5 @@ def pdf(items, path, sheet_w_in=12, sheet_h_in=6, margin=20.0):
 
 dxf(parts, 'camera_mount.dxf')
 pdf(parts, 'camera_mount_laser_12x6in.pdf')
-print("bar %.0f x %.0f mm, slots at +-%.2f mm (half %.2f): covers %.1f to %.1f mm spacing, tripod hole %.1f, %d discs %.0f mm" %
-      (BAR_W, BAR_H, mid, half_len, 2*(mid-half_len), 2*(mid+half_len), TRIPOD, DISCS, DISC_D))
+print("bars %.0f x %.0f mm: A holes %.1f mm apart (%.3f in), B slots covering %.1f to %.1f mm; tripod hole %.1f; %d discs %.0f mm" %
+      (BAR_W, BAR_H, FIXED_SPACING, FIXED_SPACING/25.4, 2*(mid-half_len), 2*(mid+half_len), TRIPOD, DISCS, DISC_D))
