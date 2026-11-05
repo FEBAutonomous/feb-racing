@@ -6,6 +6,9 @@ modes:
   trackdrive:
     launch: race.launch.py
     max_speed: 10.0
+  inspection:               # the car's first laps: the mapping lap at walking pace, racing capped the same
+    launch: race.launch.py
+    max_speed: 0.8
 default_mode: trackdrive
 # the racer runs its own throttle law (tyre model, slip): the sim adapter must be the identity,
 # wheel speed = throttle * 25.11 with no trim, which is what the simulator does with a throttle

@@ -1,0 +1,20 @@
+# Loaded on top of racer.yaml only on the car (FEB_CAR=1). The RealSense D435if on the front bumper,
+# fitted 2026-11-04 from the first car bag (same camera and mount as feb_cone_driver's car file), plus
+# the outdoor tune from the same evening and first-drive speeds. The supervisor's cap applies on top.
+racer:
+  ros__parameters:
+    camera_hfov_deg: 55.6
+    camera_ahead: 0.20
+    camera_lateral: 0.02
+    camera_col_bias: 0.0
+    camera_lag_s: 0.10
+    band_top: 0.58
+    band_bottom: 0.92
+    band_floor: 0.50
+    hsv_blue: [92, 110, 40, 115, 255, 255]
+    hsv_yellow: [18, 90, 60, 38, 255, 255]
+    hsv_orange: [0, 100, 60, 15, 255, 255]
+    min_blob_px: 60
+    orange_min_px: 120
+    max_range: 4.0            # outdoor clutter at range is not cones
+    side_guess_range: 0.0     # a cone the camera gave no colour is ignored, never guessed
