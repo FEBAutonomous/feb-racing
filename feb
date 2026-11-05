@@ -411,7 +411,7 @@ def resolve_track(name):
 
 # ------------------------------------------------------------------ new: your own driver from the template
 
-TEMPLATES = ("feb_driver", "feb_cone_driver")
+TEMPLATES = ("feb_driver", "feb_cone_driver", "feb_localizer")
 
 
 def cmd_new(args):

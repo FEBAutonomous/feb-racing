@@ -1,0 +1,14 @@
+# The localisation project: a memory driver whose lap two is only as good as the Localizer in
+# feb_localizer/localizer.py. ./feb new my_localizer --from feb_localizer, then edit that one file.
+name: feb_localizer
+kind: walls
+maintainer: FEB autonomous team
+packages: [feb_localizer]
+modes:
+  trackdrive:
+    launch: drive.launch.py
+    max_speed: 3.0
+  inspection:
+    launch: drive.launch.py
+    max_speed: 0.8
+default_mode: trackdrive

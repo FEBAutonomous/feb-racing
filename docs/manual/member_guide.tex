@@ -237,6 +237,17 @@ A mode is a launch file plus a speed cap; \texttt{inspection} is the slow first 
 new, \texttt{trackdrive} the race. Edit the Python, save, run again: no rebuild for Python.
 Keep the package in git, \file{stack/} is ignored by this repo on purpose.
 
+
+\subsection*{A project with a number: localisation}
+
+\cmd{./feb new my\_localizer -{}-from feb\_localizer} gives you a driver that already drives, maps and
+remembers, built around one file, \file{localizer.py}: a class with \texttt{predict} (dead reckoning,
+shipped) and two empty methods, \texttt{update\_mapping} and \texttt{update\_racing}. Lap one is
+reactive while the grid is built at your pose; lap two follows the recorded path on your pose, and
+with dead reckoning alone it drives into the walls on \texttt{porto}. \cmd{ros2 run my\_localizer score
+bags/porto\_laps} (in \cmd{./feb shell}) replays a recorded lap with ground truth through your class
+and prints the drift, no simulator needed. Make that number go down. The package README has the rest.
+
 \section{The contract}
 \label{sec:contract}
 

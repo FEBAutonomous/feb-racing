@@ -1,0 +1,20 @@
+# feb_localizer: the driver around your Localizer. Every number has a comment in driver.py.
+localizer_driver:
+  ros__parameters:
+    fallback: false       # lap two trusts the Localizer's pose completely; true hands back to the reactive law when the scan no longer fits the map
+    fit_threshold: 0.45   # fraction of scan endpoints on mapped walls below which the pose is called wrong (with fallback on)
+    oracle: false         # simulator only: use the true position instead of the Localizer, to see lap two with a perfect localiser
+    max_speed: 2.5        # m/s cap on the mapping lap
+    race_speed: 3.0       # m/s cap on the recorded path
+    min_speed: 0.8
+    lookahead: 1.2        # m, pure pursuit on the recorded path
+    min_lap_m: 15.0       # m driven before the lap may count as closed
+    close_radius_m: 1.5   # m from the start that closes the lap
+    grid_res: 0.05        # m per cell
+    grid_size_m: 60.0
+    path_step: 0.3        # m between recorded path points
+    range_cap: 8.0
+    margin: 0.3
+    lat_accel: 3.5
+    brake_decel: 3.0
+    brake_margin: 0.45

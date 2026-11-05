@@ -212,3 +212,14 @@ docker push <you>/feb-racer:v1
 ```
 Add your team and image to `submissions.yaml` in a pull request. The image must start the
 bridge and your stack from `/home/autodrive_devkit.sh` (the starter Dockerfile does).
+
+## The localisation project: `feb_localizer`
+
+A memory driver whose lap two is only as good as the `Localizer` class in `feb_localizer/localizer.py`.
+Lap one drives reactively while stamping every scan into an occupancy grid at the Localizer's pose
+and recording the path; lap two follows that path on the pose. The shipped Localizer only
+dead-reckons, so on porto lap two drives into the walls (the fallback to reactive is off in the
+simulator on purpose; the car file turns it on). Write `update_mapping` and `update_racing` so the
+pose stays true. `ros2 run feb_localizer score bags/porto_laps` scores a Localizer offline against
+ground truth in seconds, mapping lap and racing lap separately, with a picture. Details in the
+package README; `./feb new NAME --from feb_localizer` makes a copy to work in.

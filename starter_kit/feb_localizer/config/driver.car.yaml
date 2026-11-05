@@ -1,0 +1,8 @@
+# Loaded on top of driver.yaml only on the car (FEB_CAR=1). The fallback is on: a wrong pose costs
+# a slower lap, not a bumper. First drives slow.
+localizer_driver:
+  ros__parameters:
+    fallback: true
+    max_speed: 1.5
+    race_speed: 1.5
+    steer_delay: 0.15
