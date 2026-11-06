@@ -5,117 +5,230 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FEBAUTO Racing</title>
 <style>
-  :root { --blue: #1C4687; --gold: #FDB515; --ink: #1b1f27; --muted: #6b7280; --line: #e5e7eb; --bg: #fafafa; }
+  :root {
+    --bg: #0b0e14; --bg2: #11151d; --card: #161b25; --card2: #1c2230; --line: #262d3b; --line2: #323b4c;
+    --ink: #e8ecf3; --ink2: #aab3c2; --muted: #7b8597;
+    --gold: #FDB515; --gold2: #ffcb4d; --blue: #4f8cff; --blue2: #2f5ec4;
+    --ok: #34d399; --warn: #fbbf24; --bad: #f87171; --info: #60a5fa;
+    --r: 14px;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: var(--ink); background: var(--bg); }
-  header { background: var(--blue); color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  header img { height: 34px; background: #fff; padding: 4px 6px; border-radius: 6px; box-sizing: content-box; }
-  header h1 { font-size: 20px; margin: 0; letter-spacing: .3px; }
-  nav a { color: #fff; opacity: .85; text-decoration: none; margin-right: 18px; font-weight: 600; }
-  nav a.active, nav a:hover { opacity: 1; border-bottom: 3px solid var(--gold); }
-  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
-  h2 { margin: 24px 0 8px; } h3 { margin: 18px 0 6px; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-  .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px; text-decoration: none; color: inherit; }
-  .card img { width: 100%; border-radius: 6px; background: #2a2a2a; }
-  .card .meta { color: var(--muted); font-size: 13px; }
-  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  th { background: #f3f4f6; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg);
+    background-image: radial-gradient(900px 500px at 10% -10%, rgba(79,140,255,.14), transparent 60%), radial-gradient(700px 400px at 95% 0%, rgba(253,181,21,.10), transparent 60%); background-attachment: fixed; }
+  a { color: var(--blue); text-decoration: none; } a:hover { color: var(--gold2); }
+
+  header { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(12px); background: rgba(11,14,20,.78); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 1120px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 12px; color: var(--ink); font-weight: 800; letter-spacing: .4px; font-size: 17px; }
+  .brand img { height: 30px; }
+  .brand small { font-weight: 500; color: var(--muted); font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; margin-left: 2px; }
+  nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+  nav a { color: var(--ink2); font-weight: 600; font-size: 14px; padding: 7px 12px; border-radius: 9px; }
+  nav a:hover { color: var(--ink); background: var(--card); }
+  nav a.active { color: #111; background: var(--gold); }
+
+  main { max-width: 1120px; margin: 0 auto; padding: 28px 20px 80px; }
+  section { margin: 0 0 40px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 0 0 14px; }
+  h1 { font-size: 30px; margin: 0; letter-spacing: -.3px; }
+  h2 { font-size: 22px; margin: 0; letter-spacing: -.2px; }
+  h3 { font-size: 15px; margin: 22px 0 8px; color: var(--ink2); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
+  .lead { color: var(--ink2); margin: 0 0 16px; max-width: 760px; }
+  .muted { color: var(--muted); } .small { font-size: 13px; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: var(--gold); margin: 0 0 6px; }
+
+  .hero { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: stretch; margin-bottom: 40px; }
+  .hero .panel { background: linear-gradient(160deg, var(--card2), var(--card)); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; }
+  .stat b { display: block; font-size: 28px; letter-spacing: -.5px; line-height: 1.1; }
+  .stat span { color: var(--muted); font-size: 13px; }
+
+  .tabs { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; }
+  .tabs a { padding: 6px 14px; border-radius: 8px; color: var(--ink2); font-weight: 600; font-size: 14px; }
+  .tabs a.on { background: var(--gold); color: #111; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; }
+  .chip { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line2); color: var(--ink2); font-size: 13px; font-weight: 600; background: var(--card); }
+  .chip.on { background: var(--blue2); border-color: var(--blue2); color: #fff; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; color: inherit; display: block; transition: transform .12s, border-color .12s; }
+  .card:hover { transform: translateY(-2px); border-color: var(--line2); color: inherit; }
+  .card img { width: 100%; aspect-ratio: 16/10; object-fit: contain; border-radius: 9px; background: #2a2a2a; margin-bottom: 10px; }
+  .card .title { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .card .best { margin-top: 8px; font-size: 13px; color: var(--ink2); }
+  .card .best b { color: var(--gold2); font-variant-numeric: tabular-nums; }
+  .card.feat { border-color: rgba(253,181,21,.45); box-shadow: 0 0 0 1px rgba(253,181,21,.15) inset; }
+  .card.event { padding: 18px; }
+  .dots { color: var(--gold); letter-spacing: 1px; } .dots .o { color: var(--line2); }
+
+  .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); scrollbar-color: var(--line2) var(--bg2); }
+  ::-webkit-scrollbar { height: 8px; width: 8px; } ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 4px; } ::-webkit-scrollbar-track { background: var(--bg2); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { background: var(--bg2); font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); font-weight: 700; }
   tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: rgba(255,255,255,.025); }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
-  .ok { background: #dcfce7; color: #166534; } .warn { background: #fef3c7; color: #92400e; } .bad { background: #fee2e2; color: #991b1b; } .info { background: #dbeafe; color: #1e40af; }
-  .muted { color: var(--muted); } .wrap { overflow-x: auto; }
-  code { background: #eef; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-  footer { color: var(--muted); font-size: 13px; margin-top: 40px; }
+  .pos { width: 44px; color: var(--muted); font-weight: 700; }
+  .pos.p1 { color: var(--gold); } .pos.p2 { color: #cbd5e1; } .pos.p3 { color: #d97706; }
+  .score { font-weight: 800; color: var(--gold2); }
+  .bar-cell { min-width: 150px; }
+  .meter { display: inline-block; vertical-align: middle; width: 110px; height: 6px; background: var(--line); border-radius: 3px; margin-right: 8px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--gold)); }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle; border: 1px solid transparent; }
+  .ok { background: rgba(52,211,153,.14); color: var(--ok); border-color: rgba(52,211,153,.3); }
+  .warn { background: rgba(251,191,36,.14); color: var(--warn); border-color: rgba(251,191,36,.3); }
+  .bad { background: rgba(248,113,113,.14); color: var(--bad); border-color: rgba(248,113,113,.3); }
+  .info { background: rgba(96,165,250,.14); color: var(--info); border-color: rgba(96,165,250,.3); }
+  .gold { background: rgba(253,181,21,.14); color: var(--gold2); border-color: rgba(253,181,21,.35); }
+  code { background: var(--bg2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; font-size: 13px; color: var(--ink2); }
+  .pace-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+  .pace { background: var(--bg2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; font-size: 13px; }
+  .pace b { float: right; font-variant-numeric: tabular-nums; }
+  .track-hero { display: grid; grid-template-columns: 420px 1fr; gap: 24px; align-items: start; margin-bottom: 24px; }
+  .track-hero img { width: 100%; border-radius: var(--r); background: #2a2a2a; border: 1px solid var(--line); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
+  .kv > span:nth-child(odd) { color: var(--muted); }
+  ol.steps { padding-left: 20px; } ol.steps li { margin: 8px 0; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 56px; border-top: 1px solid var(--line); padding-top: 16px; }
+  @media (max-width: 760px) { .hero, .track-hero { grid-template-columns: 1fr; } .stat b { font-size: 24px; } nav { margin-left: 0; } }
 </style>
 </head>
 <body>
-<header>
-  <img src="logo.svg" alt="FEB">
-  <h1>FEBAUTO Racing</h1>
+<header><div class="bar">
+  <a class="brand" href="#/"><img src="logo.svg" alt="">FEBAUTO<small>Racing</small></a>
   <nav id="nav">
-    <a href="#/">Home</a><a href="#/practice">Practice</a><a href="#/events">Competitions</a><a href="#/teams">Teams</a><a href="#/docs">How to enter</a>
+    <a href="#/">Leaderboards</a><a href="#/tracks">Tracks</a><a href="#/events">Competitions</a><a href="#/teams">Drivers</a><a href="#/docs">How to enter</a>
   </nav>
-</header>
+</div></header>
 <main id="main">Loading…</main>
 <script>
-const $ = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const secs = (v) => v == null ? '—' : Number(v).toFixed(2);
+const pct = (v) => v == null ? '—' : Number(v).toFixed(1) + '%';
 const statusBadge = (r) => r.status === 'finished' ? '' : `<span class="badge ${r.status === 'dnf' ? 'warn' : 'bad'}">${r.status.toUpperCase()}</span>`;
 const verifiedBadge = (r) => r.verified ? '<span class="badge ok">verified</span>' : '<span class="badge warn">unverified</span>';
 const qualMark = (v) => v === 'verified' ? '<span class="badge ok">✓</span>' : v === 'unverified' ? '<span class="badge warn">~</span>' : '<span class="muted">–</span>';
 const auditBadge = (r) => Object.keys(r.restricted_subscribers || {}).length ? '<span class="badge bad" title="a node subscribed to a restricted topic">restricted topics</span>' : '';
+const posCell = (i) => `<td class="pos p${i + 1}">${i + 1}</td>`;
+const dots = (n) => `<span class="dots">${'●'.repeat(n || 0)}<span class="o">${'●'.repeat(5 - (n || 0))}</span></span>`;
+const groups = { feb: 'FEB tracks', feb_cones: 'FEB tracks (cones)', fsae: 'Formula Student tracks', roboracer: 'RoboRacer tracks', f1: 'F1 circuits (1:10)', f1_cones: 'F1 circuits (1:10, cones)' };
+const groupOrder = Object.keys(groups);
+const byDiff = (a, b) => (a.difficulty - b.difficulty) || (a.length - b.length);
+const trackName = (d, id) => (d.tracks.find(t => t.id === id) || { name: id }).name;
 
-function table(rows, showVerified) {
+function resultsTable(rows, showVerified) {
   if (!rows.length) return '<p class="muted">No results yet.</p>';
-  return `<div class="wrap"><table><thead><tr><th>#</th><th>Team</th><th class="num">Total</th><th class="num">Best lap</th><th class="num">Laps</th><th class="num">Collisions</th><th>Run</th></tr></thead><tbody>` +
-    rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.team)}${showVerified ? verifiedBadge(r) : ''}${statusBadge(r)}${auditBadge(r)}</td>
-      <td class="num">${secs(r.total_s)}</td><td class="num">${secs(r.best_lap_s)}</td><td class="num">${r.laps_completed ?? r.lap_times.length}</td>
-      <td class="num">${r.collisions}</td><td class="muted">${esc(r.started_at.slice(0, 10))} <code>${esc(r.id)}</code></td></tr>`).join('') + '</tbody></table></div>';
+  return `<div class="wrap"><table><thead><tr><th>#</th><th>Driver</th><th class="num">Total</th><th class="num">Best lap</th><th class="num">Laps</th><th class="num">Collisions</th><th>Run</th></tr></thead><tbody>` +
+    rows.map((r, i) => `<tr>${posCell(i)}<td>${esc(r.team)}${showVerified ? verifiedBadge(r) : ''}${statusBadge(r)}${auditBadge(r)}</td>
+      <td class="num">${secs(r.total_s)} s</td><td class="num">${secs(r.best_lap_s)} s</td><td class="num">${r.laps_completed ?? r.lap_times.length}</td>
+      <td class="num">${r.collisions}</td><td class="muted small">${esc(r.started_at.slice(0, 10))} <code>${esc(r.id)}</code></td></tr>`).join('') + '</tbody></table></div>';
 }
 
-function overallTable(o) {
-  if (!o.standings.length) return '<p class="muted">No team has finished every track yet.</p>';
-  return `<div class="wrap"><table><thead><tr><th>#</th><th>Team</th><th class="num">Total</th>${o.tracks.map(t => `<th class="num">${esc(t)}</th>`).join('')}</tr></thead><tbody>` +
-    o.standings.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.team)}${verifiedBadge(r)}</td><td class="num">${secs(r.total_s)}</td>${o.tracks.map(t => `<td class="num">${secs(r.tracks[t])}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+function generalTable(d, o) {
+  if (!o.standings.length) return '<p class="muted">No finished runs on any track of this kind yet.</p>';
+  return `<div class="wrap"><table><thead><tr><th>#</th><th>Driver</th><th class="num">Score</th><th class="bar-cell">Tracks finished</th><th class="num">Mean pace on finished</th></tr></thead><tbody>` +
+    o.standings.map((r, i) => { const fin = Object.values(r.pace); const mean = fin.length ? fin.reduce((a, b) => a + b, 0) / fin.length : 0;
+      return `<tr>${posCell(i)}<td>${esc(r.team)}${verifiedBadge(r)}</td><td class="num score">${pct(r.score)}</td>
+      <td class="bar-cell"><span class="meter"><i style="width:${100 * r.finished / r.of}%"></i></span>${r.finished} / ${r.of}</td><td class="num">${pct(mean)}</td></tr>`; }).join('') + '</tbody></table></div>' +
+    `<details style="margin-top:10px"><summary class="muted small" style="cursor:pointer">Pace per track</summary>${o.standings.map(r => `<div class="small" style="margin-top:10px"><b>${esc(r.team)}</b><div class="pace-grid">${o.tracks.map(t => `<div class="pace" style="${r.pace[t] == null ? 'opacity:.45' : ''}">${esc(trackName(d, t))}<b>${r.pace[t] == null ? '—' : pct(r.pace[t])}</b></div>`).join('')}</div></div>`).join('')}</details>`;
+}
+
+function trackCard(t, featured) {
+  const best = t.standings.find(r => r.status === 'finished');
+  return `<a class="card ${featured ? 'feat' : ''}" href="#/tracks/${esc(t.id)}">${t.preview ? `<img src="tracks/${esc(t.id)}.png" alt="">` : ''}
+    <div class="title">${esc(t.name)}${featured ? '<span class="badge gold">featured</span>' : ''}<span class="badge ${t.kind === 'cones' ? 'info' : 'ok'}">${t.kind}</span></div>
+    <div class="meta">${t.length} m · ${t.direction} · ${dots(t.difficulty)} · ${t.attempts} attempt${t.attempts === 1 ? '' : 's'}</div>
+    <div class="best">${best ? `Best <b>${secs(best.total_s)} s</b> by ${esc(best.team)} · lap <b>${secs(best.best_lap_s)} s</b>` : '<span class="muted">No finished run yet. Be first.</span>'}</div></a>`;
+}
+
+function eventCard(e) {
+  return `<a class="card event" href="#/events/${esc(e.id)}"><div class="title">${esc(e.title)}<span class="badge ${e.status === 'done' ? 'ok' : e.status === 'live' ? 'bad' : 'info'}">${esc(e.status)}</span></div>
+    <div class="meta">${esc(e.date)} · ${esc(e.mode)} · ${esc(e.track)}${e.attempts ? ` · ${e.attempts} attempts` : ''}</div></a>`;
 }
 
 function races(e) {
   if (!e.races || !e.races.length) return '';
-  return '<h3>Races</h3><div class="wrap"><table><thead><tr><th>Race</th><th>Team</th><th class="num">Pos</th><th class="num">Laps</th><th class="num">Finish</th><th class="num">Collisions</th></tr></thead><tbody>' +
+  return '<h3>Races</h3><div class="wrap"><table><thead><tr><th>Race</th><th>Driver</th><th class="num">Pos</th><th class="num">Laps</th><th class="num">Finish</th><th class="num">Collisions</th></tr></thead><tbody>' +
     e.races.map(id => e.results.filter(r => r.race === id).sort((a, b) => a.position - b.position).map(r =>
       `<tr><td>${esc(id)}</td><td>${esc(r.team)}${statusBadge(r)}</td><td class="num">${r.position}</td><td class="num">${r.laps_completed}</td><td class="num">${secs(r.finish_s)}</td><td class="num">${r.collisions}</td></tr>`).join('')).join('') + '</tbody></table></div>';
 }
 
-const groups = [['feb', 'FEB tracks'], ['feb_cones', 'FEB tracks (cones)'], ['fsae', 'FSAE tracks'], ['roboracer', 'RoboRacer tracks'], ['f1', 'F1 tracks'], ['f1_cones', 'F1 tracks (cones)']];
 const pages = {
-  '/': (d) => `
-    <h2>Competitions</h2>
-    <div class="cards">${d.events.map(e => `<a class="card" href="#/events/${esc(e.id)}"><b>${esc(e.title)}</b><div class="meta">${esc(e.date)} · ${esc(e.mode)} · ${esc(e.track)}</div>
-      <span class="badge ${e.status === 'done' ? 'ok' : e.status === 'live' ? 'bad' : 'info'}">${esc(e.status)}</span></a>`).join('') || '<p class="muted">No events scheduled.</p>'}</div>
-    <h2>Overall</h2>
-    <p class="muted">Every qualifying track of a kind, totals summed. <code>./feb practice --driver NAME</code> runs exactly this set; only teams with a finished run on every track appear.</p>
-    ${(d.overall || []).filter(o => o.tracks.length).map(o => `<h3>${esc(o.name)} <span class="muted">${o.tracks.map(esc).join(' + ')}</span></h3>${overallTable(o)}`).join('')}
-    <h2>Practice tracks</h2>
-    <p class="muted">Qualify for the first competition with ${d.qualify.laps} laps and ${d.qualify.max_collisions === 0 ? "no collisions" : "at most " + d.qualify.max_collisions + " collision"} on every track below. Progress per team: <a href="#/teams">Teams</a>.</p>
-    ${groups.map(([g, name]) => { const ts = d.tracks.filter(t => (t.category || 'feb') === g).sort((a, b) => (a.difficulty - b.difficulty) || (a.length - b.length)); return ts.length ? `<h3>${name}</h3>
-    <div class="cards">${ts.map(t => `<a class="card" href="#/practice/${esc(t.id)}">${t.preview ? `<img src="tracks/${esc(t.id)}.png" alt="">` : ''}<b>${esc(t.name)}</b>${t.qualifying ? '' : '<span class="badge info">showcase</span>'}
-      <div class="meta">${t.length} m · ${t.direction} · ${'●'.repeat(t.difficulty || 0)}${'○'.repeat(5 - (t.difficulty || 0))} · ${t.attempts} attempts${t.standings[0] ? ` · best ${secs(t.standings[0].best_lap_s)} s by ${esc(t.standings[0].team)}` : ''}</div></a>`).join('')}</div>` : ''; }).join('')}`,
-  '/practice': (d) => pages['/'](d),
-  '/practice/:id': (d, id) => { const t = d.tracks.find(t => t.id === id); if (!t) return 'Unknown track';
-    return `<h2>${esc(t.name)} <span class="muted">practice</span></h2>${t.preview ? `<img src="tracks/${esc(t.id)}.png" style="max-width:420px;border-radius:8px">` : ''}
-      <p class="meta muted">${t.length} m · ${t.direction} · walls ${t.walls ? 'yes' : 'no'} · cones ${t.cones ? 'yes' : 'no'}. Best attempt per team; verified results are reruns on the organiser's PC.</p>${table(t.standings, true)}`; },
-  '/events': (d) => `<h2>Competitions</h2>${d.events.map(e => `<h3><a href="#/events/${esc(e.id)}">${esc(e.title)}</a> <span class="badge info">${esc(e.status)}</span></h3><div class="muted">${esc(e.date)} · ${esc(e.mode)} · track ${esc(e.track)} · ${e.attempts} attempts</div>${table(e.standings, false)}`).join('') || '<p class="muted">No events yet.</p>'}`,
+  '/': (d, _, q) => {
+    const kind = q.kind || 'walls'; const o = (d.overall || []).find(o => o.kind === kind) || { standings: [], tracks: [], featured: [] };
+    const featured = d.tracks.filter(t => t.qualifying).sort(byDiff);
+    const runs = d.tracks.reduce((a, t) => a + t.attempts, 0);
+    const drivers = new Set(d.tracks.flatMap(t => t.standings.map(r => r.team))).size;
+    return `
+    <div class="hero">
+      <div class="panel"><p class="eyebrow">Formula Electric at Berkeley · Autonomous</p><h1>Autonomous racing leaderboards</h1>
+        <p class="lead" style="margin-top:10px">1/10-scale cars in the FEB simulator. Two disciplines: <b>walls</b> (RoboRacer / F1TENTH style) and <b>cones</b> (Formula Student Driverless style, blue and yellow cones, build your own map). Every track has its own board; the general boards below rank drivers across all of them.</p>
+        <p class="small muted" style="margin:0">Score your driver with <code>./feb practice</code>, post it with <code>./feb submit</code>. Self-reported runs show as <span class="badge warn">unverified</span> until the nightly rerun confirms them.</p></div>
+      <div class="stats"><div class="stat"><b>${d.tracks.length}</b><span>tracks</span></div><div class="stat"><b>${runs}</b><span>runs posted</span></div><div class="stat"><b>${drivers}</b><span>drivers on the boards</span></div><div class="stat"><b>${d.events.length}</b><span>competitions</span></div></div>
+    </div>
+    <section><div class="sec-head"><h2>General leaderboard</h2><div class="tabs">${(d.overall || []).map(x => `<a class="${x.kind === kind ? 'on' : ''}" href="#/?kind=${x.kind}">${esc(x.name)} · ${x.tracks.length} tracks</a>`).join('')}</div></div>
+      <p class="lead small">Score is the mean pace over every ${esc(kind)} track. Pace on a track is the fastest posted total divided by yours, so 100% is the best run on that track; tracks you have not finished count 0%. Finish more tracks and go faster to climb.</p>
+      ${generalTable(d, o)}</section>
+    <section><div class="sec-head"><h2>Featured tracks</h2><span class="muted small">qualification set · ${d.qualify.laps} laps, ${d.qualify.max_collisions === 0 ? 'no collisions' : 'at most ' + d.qualify.max_collisions + ' collision'} to qualify · <a href="#/tracks">all tracks</a></span></div>
+      <div class="cards">${featured.map(t => trackCard(t, true)).join('')}</div></section>
+    <section><div class="sec-head"><h2>Competitions</h2><span class="muted small"><a href="#/events">all</a></span></div>
+      <div class="cards">${d.events.map(eventCard).join('') || '<p class="muted">No events scheduled.</p>'}</div></section>`;
+  },
+  '/tracks': (d, _, q) => {
+    const f = q.f || 'all';
+    const show = (t) => f === 'all' || f === t.kind || f === (t.category || 'feb');
+    const featured = d.tracks.filter(t => t.qualifying && show(t)).sort(byDiff);
+    const chips = [['all', 'All'], ['walls', 'Walls'], ['cones', 'Cones'], ...groupOrder.filter(g => d.tracks.some(t => (t.category || 'feb') === g)).map(g => [g, groups[g]])];
+    return `<div class="sec-head"><h2>Tracks</h2><span class="muted small">${d.tracks.length} tracks · each with its own leaderboard</span></div>
+      <div class="chips">${chips.map(([k, n]) => `<a class="chip ${f === k ? 'on' : ''}" href="#/tracks?f=${k}">${esc(n)}</a>`).join('')}</div>
+      ${featured.length ? `<h3>Featured · qualification set</h3><div class="cards">${featured.map(t => trackCard(t, true)).join('')}</div>` : ''}
+      ${groupOrder.map(g => { const ts = d.tracks.filter(t => !t.qualifying && (t.category || 'feb') === g && show(t)).sort(byDiff);
+        return ts.length ? `<h3>${esc(groups[g])}</h3><div class="cards">${ts.map(t => trackCard(t, false)).join('')}</div>` : ''; }).join('')}`;
+  },
+  '/tracks/:id': (d, id) => { const t = d.tracks.find(t => t.id === id); if (!t) return 'Unknown track';
+    return `<p class="eyebrow"><a href="#/tracks">Tracks</a> / ${esc(groups[t.category || 'feb'] || t.category)}</p>
+      <div class="track-hero">${t.preview ? `<img src="tracks/${esc(t.id)}.png" alt="">` : '<div></div>'}
+        <div><h1>${esc(t.name)}${t.qualifying ? '<span class="badge gold">featured</span>' : ''}<span class="badge ${t.kind === 'cones' ? 'info' : 'ok'}">${t.kind}</span></h1>
+          <div class="kv" style="margin-top:14px"><span>Length</span><span>${t.length} m</span><span>Direction</span><span>${esc(t.direction)}</span><span>Difficulty</span><span>${dots(t.difficulty)}</span><span>Walls</span><span>${t.walls ? 'yes' : 'no'}</span><span>Cones</span><span>${t.cones ? 'yes' : 'no'}</span><span>Attempts</span><span>${t.attempts}</span></div>
+          <p class="small muted" style="margin-top:14px">Run it: <code>./feb practice --driver NAME --track ${esc(t.id)}</code>. Best attempt per driver; verified results are reruns on the organiser's PC.</p></div></div>
+      <h2 style="margin-bottom:10px">Leaderboard</h2>${resultsTable(t.standings, true)}`; },
+  '/practice': (d) => pages['/tracks'](d, '', {}),
+  '/practice/:id': (d, id) => pages['/tracks/:id'](d, id),
+  '/events': (d) => `<div class="sec-head"><h2>Competitions</h2></div>${d.events.map(e => `<section><h3 style="margin-top:0"><a href="#/events/${esc(e.id)}">${esc(e.title)}</a> <span class="badge info">${esc(e.status)}</span></h3><div class="muted small" style="margin-bottom:8px">${esc(e.date)} · ${esc(e.mode)} · track ${esc(e.track)} · ${e.attempts} attempts</div>${resultsTable(e.standings, false)}</section>`).join('') || '<p class="muted">No events yet.</p>'}`,
   '/events/:id': (d, id) => { const e = d.events.find(e => e.id === id); if (!e) return 'Unknown event';
     const r = e.rules || {};
-    return `<h2>${esc(e.title)} <span class="badge info">${esc(e.status)}</span></h2><p class="muted">${esc(e.date)} · ${esc(e.mode)} · track ${esc(e.track)} · ${e.attempts ?? 1} attempt(s) per team, best counts.<br>
-      Rules: ${r.warmup_laps ?? 1} warm-up + ${r.laps ?? 10} timed laps, +${r.collision_penalty_s ?? 10} s per collision, DSQ above ${r.max_collisions ?? 10} collisions, ${r.timeout_s ?? 300} s limit.</p>${table(e.standings, false)}${races(e)}`; },
-  '/teams': (d) => `<h2>Teams</h2>
-    <p class="muted">Qualification for the first competition: on every practice track, a verified run of ${d.qualify.laps} laps with ${d.qualify.max_collisions === 0 ? "no collisions" : "at most " + d.qualify.max_collisions + " collision"}. ✓ verified &nbsp; ~ self-reported, awaiting the nightly rerun &nbsp; – not yet.</p>
-    <div class="wrap"><table><thead><tr><th>Team</th><th>Members</th>${d.tracks.filter(t => t.qualifying).map(t => `<th>${esc(t.name)}</th>`).join('')}<th>Image</th></tr></thead><tbody>${d.teams.map(t => `<tr><td>${esc(t.name)}${t.qualified ? '<span class="badge ok">qualified</span>' : ''}</td><td>${(t.members || []).map(esc).join(', ')}</td>${d.tracks.filter(t => t.qualifying).map(tr => `<td>${qualMark((t.qualification || {})[tr.id])}</td>`).join('')}<td><code>${esc(t.image)}</code></td></tr>`).join('')}</tbody></table></div>`,
-  '/docs': () => `<h2>How to enter</h2>
-    <ol>
+    return `<p class="eyebrow"><a href="#/events">Competitions</a></p><h1>${esc(e.title)} <span class="badge info">${esc(e.status)}</span></h1><p class="lead">${esc(e.date)} · ${esc(e.mode)} · track ${esc(e.track)} · ${e.attempts ?? 1} attempt(s) per driver, best counts.<br>
+      <span class="small muted">Rules: ${r.warmup_laps ?? 1} warm-up + ${r.laps ?? 10} timed laps, +${r.collision_penalty_s ?? 10} s per collision, DSQ above ${r.max_collisions ?? 10} collisions, ${r.timeout_s ?? 300} s limit.</span></p>${resultsTable(e.standings, false)}${races(e)}`; },
+  '/teams': (d) => `<div class="sec-head"><h2>Drivers</h2></div>
+    <p class="lead small">Qualification for the first competition: on every featured track, a verified run of ${d.qualify.laps} laps with ${d.qualify.max_collisions === 0 ? 'no collisions' : 'at most ' + d.qualify.max_collisions + ' collision'}. <span class="badge ok">✓</span> verified &nbsp; <span class="badge warn">~</span> self-reported, awaiting the nightly rerun &nbsp; – not yet.</p>
+    <div class="wrap"><table><thead><tr><th>Driver</th><th>Members</th>${d.tracks.filter(t => t.qualifying).map(t => `<th>${esc(t.name)}</th>`).join('')}<th>Image</th></tr></thead><tbody>${d.teams.map(t => `<tr><td>${esc(t.name)}${t.qualified ? '<span class="badge ok">qualified</span>' : ''}</td><td>${(t.members || []).map(esc).join(', ')}</td>${d.tracks.filter(t => t.qualifying).map(tr => `<td>${qualMark((t.qualification || {})[tr.id])}</td>`).join('')}<td><code>${esc(t.image)}</code></td></tr>`).join('')}</tbody></table></div>`,
+  '/docs': (d) => `<div class="sec-head"><h2>How to enter</h2></div>
+    <ol class="steps">
       <li>Clone the repo, run <code>./feb setup</code>, then <code>./feb up</code> to drive manually.</li>
-      <li>Copy <code>starter_kit/feb_driver</code> into <code>stack/</code> and make it drive: <code>./feb up --stack "ros2 launch feb_driver drive.launch.py"</code>.</li>
-      <li>Score yourself: <code>./feb practice --driver feb_driver</code> runs every practice track of its kind. Post the finished ones: <code>./feb submit</code> (one pull request).</li>
+      <li>Start a driver from the starter kit: <code>./feb new my_driver</code> (add <code>--from feb_cone_driver</code> for cones) and make it drive: <code>./feb up --driver my_driver</code>.</li>
+      <li>Score yourself: <code>./feb practice --driver my_driver</code> runs every featured track of its kind (<code>--track all</code> for every track). Post the finished ones: <code>./feb submit</code>.</li>
       <li>Build and push your image (<code>docker build</code> from the FEB devkit), add your team to <code>submissions.yaml</code>. Nightly reruns and competitions use that image.</li>
-      <li>Qualify: complete 10 laps with no collisions on <em>every</em> practice track (verified by the nightly rerun; the Teams page shows your progress). More practice tracks arrive over the semester. Qualified teams race the qualification time-attack; its top seeds go to the head-to-head final, two cars at a time.</li>
+      <li>Qualify: ${d.qualify.laps} laps with no collisions on <em>every</em> featured track, verified by the nightly rerun (the Drivers page shows your progress). Qualified drivers race the qualification time-attack; its top seeds go to the head-to-head final, two cars at a time.</li>
     </ol>
     <p>Full guide: <a href="https://github.com/FEBAutonomous/feb-racing/blob/main/docs/handbook.md">docs/handbook.md</a> in the repo.</p>
-    <p>Rules follow the RoboRacer Sim Racing League: ground-truth topics (<code>ips</code>, <code>odom</code>, <code>tf</code>, lap/collision counters, <code>reset_command</code>) are for training and debugging only, never at race time; 10 s per collision.</p>`,
+    <p class="small muted">Rules follow the RoboRacer Sim Racing League: ground-truth topics (<code>ips</code>, <code>odom</code>, <code>tf</code>, lap/collision counters, <code>reset_command</code>) are for training and debugging only, never at race time; 10 s per collision.</p>`,
 };
 
 async function render() {
   const d = await (await fetch('data.json', { cache: 'no-store' })).json();
-  const path = location.hash.slice(1) || '/';
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + (path.split('/').slice(0, 2).join('/') || '/')));
+  const [path, qs] = (location.hash.slice(1) || '/').split('?');
+  const q = Object.fromEntries(new URLSearchParams(qs || ''));
   const [, section, id] = path.split('/');
+  const nav = '#' + (section ? `/${section}` : '/');
+  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === nav || (nav === '#/practice' && a.getAttribute('href') === '#/tracks')));
   const key = id ? `/${section}/:id` : `/${section || ''}`;
   const page = pages[key] || pages['/'];
-  document.getElementById('main').innerHTML = page(d, decodeURIComponent(id || '')) + `<footer>Generated ${esc(d.generated)} · Formula Electric at Berkeley · built on the AutoDRIVE Ecosystem</footer>`;
+  document.getElementById('main').innerHTML = page(d, decodeURIComponent(id || ''), q) + `<footer>Generated ${esc(d.generated)} · Formula Electric at Berkeley · built on the AutoDRIVE Ecosystem</footer>`;
+  window.scrollTo(0, 0);
 }
 addEventListener('hashchange', render);
 render();

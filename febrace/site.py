@@ -1,7 +1,7 @@
 """Build the static leaderboard site: site/_build/{index.html, data.json, tracks/*.png}.
 
-data.json holds everything the page renders: teams, tracks, events, and per-track /
-per-event standings. Practice standings prefer verified results; self-reported ones are
+data.json holds everything the page renders: teams, tracks, events, per-track / per-event
+standings and the two general boards (walls, cones: mean pace over every track of the kind). Practice standings prefer verified results; self-reported ones are
 shown with an "unverified" badge.
 """
 import datetime as dt
@@ -37,9 +37,19 @@ KINDS = (("walls", "Walls"), ("cones", "Cones"))
 
 
 def overall(kind, tracks):
-    """One board per kind of track: a team's totals on every qualifying track of that kind, summed.
-    Only teams that finished all of them appear; verified only if every leg is."""
-    legs = [t for t in tracks if t["qualifying"] and t["kind"] == kind]
+    """One general board per kind of track, over EVERY track of that kind (featured or not).
+
+    A driver's pace on a track is the best finished total on that track divided by their own
+    finished total: 100 % is the fastest run posted, 50 % is twice as slow. Tracks the driver
+    has not finished count 0 %. The score is the mean over all tracks of the kind, so it rewards
+    both breadth (how many tracks you have finished) and pace, and tracks of very different
+    length weigh the same. Verified only if every leg counted is a verified run."""
+    legs = [t for t in tracks if t["kind"] == kind]
+    best = {}
+    for t in legs:
+        finished = [r["total_s"] for r in t["standings"] if r["status"] == "finished"]
+        if finished:
+            best[t["id"]] = min(finished)
     teams = {}
     for t in legs:
         for r in t["standings"]:
@@ -47,12 +57,16 @@ def overall(kind, tracks):
                 teams.setdefault(r["team"], {})[t["id"]] = r
     rows = []
     for team, per in teams.items():
-        if len(per) == len(legs):
-            rows.append({"team": team, "total_s": round(sum(r["total_s"] for r in per.values()), 3),
-                         "verified": all(r.get("verified") for r in per.values()),
-                         "tracks": {tid: r["total_s"] for tid, r in per.items()}})
-    rows.sort(key=lambda r: (not r["verified"], r["total_s"]))
-    return {"kind": kind, "name": dict(KINDS)[kind], "tracks": [t["id"] for t in legs], "standings": rows}
+        pace = {tid: round(100.0 * best[tid] / r["total_s"], 1) for tid, r in per.items()}
+        rows.append({"team": team,
+                     "score": round(sum(pace.values()) / len(legs), 1) if legs else 0.0,
+                     "finished": len(per), "of": len(legs),
+                     "pace": pace,
+                     "verified": all(r.get("verified") for r in per.values()),
+                     "totals": {tid: r["total_s"] for tid, r in per.items()}})
+    rows.sort(key=lambda r: (-r["score"], not r["verified"], r["team"]))
+    return {"kind": kind, "name": dict(KINDS)[kind], "tracks": [t["id"] for t in legs],
+            "featured": [t["id"] for t in legs if t["qualifying"]], "standings": rows}
 
 
 def build():
