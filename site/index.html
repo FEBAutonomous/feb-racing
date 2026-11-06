@@ -141,6 +141,13 @@
   .track-hero { display: grid; grid-template-columns: 440px 1fr; gap: 28px; align-items: start; margin-bottom: 32px; }
   .track-hero .pic { border-radius: var(--r); background: #262626; border: 1px solid var(--line-2); overflow: hidden; box-shadow: var(--shadow); }
   .track-hero .pic img { width: 100%; display: block; }
+  .view3d { position: relative; aspect-ratio: 4/3; background: #202327; cursor: grab; }
+  .view3d:active { cursor: grabbing; }
+  .view3d canvas { display: block; width: 100%; height: 100%; }
+  .view3d img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transition: opacity .4s; }
+  .view3d.ready img { opacity: 0; pointer-events: none; }
+  .view3d .hint { position: absolute; left: 10px; bottom: 10px; font-size: 11px; color: var(--ink-3); background: rgba(9,11,16,.7); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; letter-spacing: .04em; pointer-events: none; }
+  .view3d .hint b { color: var(--gold-2); font-weight: 700; }
   .kv { display: grid; grid-template-columns: repeat(3, auto); gap: 14px; margin-top: 18px; }
   .kv div { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-s); padding: 12px 16px; }
   .kv > div > span { display: block; color: var(--ink-3); font-size: 11px; text-transform: uppercase; letter-spacing: .14em; margin-bottom: 4px; } .kv b { font-weight: 700; font-size: 15px; }
@@ -256,7 +263,7 @@ const pages = {
   },
   '/tracks/:id': (d, id) => { const t = d.tracks.find(t => t.id === id); if (!t) return '<div class="empty">Unknown track</div>';
     return `<p class="eyebrow"><a href="#/tracks">Tracks</a> &nbsp;/&nbsp; ${esc(groups[t.category || 'feb'] || t.category)}</p>
-      <div class="track-hero">${t.preview ? `<div class="pic"><img src="tracks/${esc(t.id)}.png" alt=""></div>` : '<div></div>'}
+      <div class="track-hero"><div class="pic view3d" id="view3d" data-track="tracks/${esc(t.id)}.json">${t.preview ? `<img src="tracks/${esc(t.id)}.png" alt="">` : ''}<span class="hint"><b>3D</b> · drag to orbit · scroll to zoom</span></div>
         <div><h1>${esc(t.name)}</h1><div style="margin-top:10px">${kindTag(t)} ${t.qualifying ? '<span class="tag gold">featured</span>' : ''}</div>
           <div class="kv"><div><span>Length</span><b class="mono">${t.length} m</b></div><div><span>Direction</span><b>${esc(t.direction)}</b></div><div><span>Difficulty</span><b>${diff(t.difficulty)}</b></div><div><span>Walls</span><b>${t.walls ? 'yes' : 'no'}</b></div><div><span>Cones</span><b>${t.cones ? 'yes' : 'no'}</b></div><div><span>Attempts</span><b class="mono">${t.attempts}</b></div></div>
           <p class="small muted" style="margin-top:16px">Run it: <code>./feb practice --driver NAME --track ${esc(t.id)}</code>. Best attempt per driver. Verified results are reruns on the organiser's PC.</p></div></div>
@@ -296,6 +303,101 @@ async function render() {
   main.innerHTML = page(d, decodeURIComponent(id || ''), q) + `<footer><span>Formula Electric at Berkeley · built on the AutoDRIVE Ecosystem</span><span class="mono">generated ${esc(d.generated)}</span></footer>`;
   main.style.animation = 'none'; void main.offsetWidth; main.style.animation = '';
   window.scrollTo(0, 0);
+  if (viewer) { viewer.dispose(); viewer = null; }
+  const box = document.getElementById('view3d');
+  if (box) mountTrack3D(box).then(v => { viewer = v; }).catch(e => console.warn('3D viewer unavailable', e));
+}
+
+// ---- 3D track viewer: a cosmetic model built from track.json (surface, walls or cones), Three.js from a CDN ----
+let viewer = null, THREE_P = null;
+async function mountTrack3D(box) {
+  THREE_P = THREE_P || import('https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js');
+  const [THREE, t] = await Promise.all([THREE_P, fetch(box.dataset.track).then(r => r.json())]);
+  if (!box.isConnected) return null;
+  const pairs = (flat) => { const out = []; for (let i = 0; i + 1 < flat.length; i += 2) out.push([flat[i], flat[i + 1]]); return out; };
+  const L = pairs(t.paint_left || []), R = pairs(t.paint_right || []), C = pairs(t.centreline || []);
+  const all = [...L, ...R, ...C, ...(t.cones || []).map(c => [c.x, c.y]), ...(t.walls || []).flatMap(w => pairs(w.points))];
+  if (!all.length) return null;
+  let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+  for (const [x, y] of all) { minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y); }
+  const cx = (minx + maxx) / 2, cy = (miny + maxy) / 2, span = Math.max(maxx - minx, maxy - miny);
+  const V = (x, y, z = 0) => new THREE.Vector3(x - cx, z, -(y - cy));   // track x,y (y up on the map) -> three x, -z; height on y
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x202327);
+  scene.fog = new THREE.Fog(0x202327, span * 1.6, span * 4);
+  scene.add(new THREE.HemisphereLight(0xdfe7ff, 0x202327, 1.1));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(span, span * 1.2, span * .6); scene.add(sun);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(span * 8, span * 8), new THREE.MeshStandardMaterial({ color: 0x262a30, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; scene.add(ground);
+  const grid = new THREE.GridHelper(span * 8, Math.round(span * 8 / Math.max(1, Math.round(span / 20))), 0x343a44, 0x2c3139); grid.position.y = -0.01; scene.add(grid);
+
+  // the painted surface: the centreline swept sideways. The paint lists are dash endpoints, not
+  // clean loops, so the half-width on each side is measured as the distance from each centreline
+  // sample to the nearest paint point on that side.
+  const thin = (poly, cap) => { const step = Math.max(1, Math.ceil(poly.length / cap)); return poly.filter((_, i) => i % step === 0); };
+  const Cs = thin(C, 1200);
+  if (Cs.length > 2) {
+    const near = (pts) => (x, y) => { let b = Infinity; for (const [px, py] of pts) { const d = (px - x) ** 2 + (py - y) ** 2; if (d < b) b = d; } return Math.sqrt(b); };
+    const nL = near(thin(L, 1500)), nR = near(thin(R, 1500)), n = Cs.length;
+    const fallback = 1.0;
+    const pos = [], idx = [], edgeL = [], edgeR = [];
+    for (let i = 0; i < n; i++) {
+      const [x, y] = Cs[i], [xp, yp] = Cs[(i - 1 + n) % n], [xn, yn] = Cs[(i + 1) % n];
+      let tx = xn - xp, ty = yn - yp; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+      const nx = -ty, ny = tx;   // left normal
+      const wl = L.length ? Math.min(6, nL(x, y)) : fallback, wr = R.length ? Math.min(6, nR(x, y)) : fallback;
+      // which paint list is actually on the left depends on the track's direction: test once
+      const a = V(x + nx * wl, y + ny * wl, .005), b = V(x - nx * wr, y - ny * wr, .005);
+      pos.push(a.x, a.y, a.z, b.x, b.y, b.z); edgeL.push(a); edgeR.push(b);
+    }
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n, a = 2 * i, b = 2 * i + 1, c = 2 * j, d = 2 * j + 1; idx.push(a, b, c, b, d, c); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length / 3).fill([0, 1, 0]).flat(), 3));   // flat: every vertex faces up
+    scene.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xd9dbdf, roughness: .95, side: THREE.DoubleSide })));
+    for (const edge of [edgeL, edgeR]) scene.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(edge.map(v => v.clone().setY(.012))), new THREE.LineBasicMaterial({ color: 0xffffff })));
+  }
+  if (C.length > 2) scene.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(C.map(([x, y]) => V(x, y, .015))), new THREE.LineBasicMaterial({ color: 0xf2a900, transparent: true, opacity: .8 })));
+
+  // walls: round foam tubes along each polyline
+  const wallR = (t.wall_diameter || .33) / 2;
+  for (const w of t.walls || []) {
+    const pts = pairs(w.points).map(([x, y]) => V(x, y, wallR));
+    if (pts.length < 3) continue;
+    const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(64, pts.length * 6), wallR, 12, true), new THREE.MeshStandardMaterial({ color: 0x1c4687, roughness: .6 })));
+  }
+  // cones
+  const cones = t.cones || [];
+  if (cones.length) {
+    const colours = { blue: 0x1e56d6, yellow: 0xf2c200, orange: 0xff6a00 };
+    const geo = new THREE.ConeGeometry(.11, .32, 14), base = new THREE.CylinderGeometry(.15, .15, .02, 14);
+    for (const c of cones) { const col = colours[c.color] || 0xff6a00;
+      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col, roughness: .5 })); m.position.copy(V(c.x, c.y, .16)); scene.add(m);
+      const b = new THREE.Mesh(base, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: .9 })); b.position.copy(V(c.x, c.y, .01)); scene.add(b); }
+  }
+  // start marker
+  if (t.spawn) { const m = new THREE.Mesh(new THREE.SphereGeometry(.14, 16, 12), new THREE.MeshStandardMaterial({ color: 0x3dd68c, emissive: 0x0f6b3f })); m.position.copy(V(t.spawn.x, t.spawn.y, .16)); scene.add(m); }
+
+  // camera, renderer, a small orbit control (drag to rotate, wheel to zoom, slow auto-spin until touched)
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  box.appendChild(renderer.domElement);
+  const camera = new THREE.PerspectiveCamera(42, 4 / 3, .05, span * 10);
+  let theta = Math.PI * .25, phi = .95, dist = span * 1.45, auto = true, drag = null;
+  const place = () => { camera.position.set(dist * Math.cos(phi) * Math.sin(theta), dist * Math.sin(phi), dist * Math.cos(phi) * Math.cos(theta)); camera.lookAt(0, 0, 0); };
+  const down = (e) => { auto = false; drag = { x: e.clientX, y: e.clientY }; box.setPointerCapture(e.pointerId); };
+  const move = (e) => { if (!drag) return; theta -= (e.clientX - drag.x) * .006; phi = Math.min(1.5, Math.max(.12, phi + (e.clientY - drag.y) * .006)); drag = { x: e.clientX, y: e.clientY }; };
+  const up = () => { drag = null; };
+  const wheel = (e) => { e.preventDefault(); dist = Math.min(span * 4, Math.max(span * .15, dist * Math.exp(e.deltaY * .0012))); };
+  box.addEventListener('pointerdown', down); box.addEventListener('pointermove', move); box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); box.addEventListener('wheel', wheel, { passive: false });
+  const size = () => { const w = box.clientWidth, h = box.clientHeight; if (w && h) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); place(); renderer.render(scene, camera); } };
+  const ro = new ResizeObserver(size); ro.observe(box); size();
+  let raf = 0, last = performance.now();
+  const loop = (now) => { if (auto) theta += (now - last) * .00012; last = now; place(); renderer.render(scene, camera); raf = requestAnimationFrame(loop); };
+  raf = requestAnimationFrame(loop);
+  box.classList.add('ready');
+  return { dispose() { cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); scene.traverse(o => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); renderer.domElement.remove(); } };
 }
 addEventListener('hashchange', render);
 render();

@@ -83,6 +83,7 @@ def build():
         preview = folder.with_name("preview.png")
         if preview.exists():
             shutil.copy(preview, OUT / "tracks" / f"{name}.png")
+        shutil.copy(folder, OUT / "tracks" / f"{name}.json")   # the 3D viewer on the track page reads it
         rows = [r for r in all_results if r["event"] == "practice" and r["track"] == name]
         tracks.append({"id": name, "name": t["name"], "length": t["length"], "direction": t["direction"],
                        "walls": bool(t["walls"]), "cones": bool(t["cones"]), "kind": "cones" if t["cones"] else "walls",
