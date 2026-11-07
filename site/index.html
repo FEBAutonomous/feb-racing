@@ -356,13 +356,13 @@ async function render() {
   cache = cache || await (await fetch('data.json', { cache: 'no-store' })).json(); const d = cache;
   const [path, qs] = (location.hash.slice(1) || '/').split('?');
   const q = Object.fromEntries(new URLSearchParams(qs || ''));
-  const [, section, id] = path.split('/');
+  const [, section, ...rest] = path.split('/'); const id = rest.join('/');   // a board id is discipline/event
   const nav = '#' + (section ? `/${section}` : '/');
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === nav || (nav === '#/practice' && a.getAttribute('href') === '#/tracks')));
   const key = id ? `/${section}/:id` : `/${section || ''}`;
   const page = pages[key] || pages['/'];
   const main = document.getElementById('main');
-  main.innerHTML = page(d, decodeURIComponent(id || ''), q) + `<footer><span>Formula Electric at Berkeley · built on the AutoDRIVE Ecosystem</span><span class="mono">generated ${esc(d.generated)}</span></footer>`;
+  main.innerHTML = page(d, decodeURIComponent(id || '').replace(/%2F/gi, '/'), q) + `<footer><span>Formula Electric at Berkeley · built on the AutoDRIVE Ecosystem</span><span class="mono">generated ${esc(d.generated)}</span></footer>`;
   main.style.animation = 'none'; void main.offsetWidth; main.style.animation = '';
   window.scrollTo(0, 0);
   if (viewer) { viewer.dispose(); viewer = null; }
