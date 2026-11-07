@@ -131,6 +131,7 @@ def build():
     (OUT / "data.json").write_text(json.dumps(data, indent=1, default=str))
     shutil.copy(ROOT / "site" / "index.html", OUT / "index.html")
     shutil.copy(ROOT / "assets" / "feb_logo.svg", OUT / "logo.svg")
+    shutil.copy(ROOT / "assets" / "feb_icon_256.png", OUT / "icon.png")   # tab icon for browsers that want a bitmap
     return OUT
 
 
