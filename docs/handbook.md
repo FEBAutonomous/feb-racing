@@ -51,6 +51,8 @@ angle in rad (±0.5236). Everything else is a sensor. `docs/devkit.md` has the f
    the newer devkit image and, when the organiser released one, the newer app.
 4. **Score yourself.** `./feb practice --stack "..."`: warm-up plus 10 timed laps, 10 s per
    collision, DNF after 300 s. The result and a bag land in `runs/<id>/`.
+   `--autocross` runs the warm-up lap only, the car's first sight of the track, for the Autocross board;
+   every full run scores that board too, from its warm-up lap.
 5. **Post it.** `./feb submit`: opens a pull request with the result file; a check validates
    it and merges; you appear on that track's practice board as *unverified* until the organiser
    reruns your image.

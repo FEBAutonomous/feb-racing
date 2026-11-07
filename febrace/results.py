@@ -31,7 +31,7 @@ def build(attempt, events, started):
         "image": attempt.image,
         "image_digest": attempt.image_digest(),
         "track": attempt.track.name,
-        "mode": "time-attack",
+        "mode": attempt.rules.mode,
         "rules": attempt.rules.to_dict(),
         "started_at": started.isoformat(timespec="seconds"),
         "duration_s": end.get("t"),
@@ -42,6 +42,7 @@ def build(attempt, events, started):
         "lap_times": [round(t, 3) for t in timed],
         "collisions": collisions,
         "collision_times": [e["t"] for e in events if e.get("event") == "collision"],
+        "collision_laps": [e.get("lap", 0) for e in events if e.get("event") == "collision"],   # 0 = the warm-up lap
         "penalty_s": penalty,
         "total_s": total,
         "best_lap_s": round(best, 3) if best is not None else None,

@@ -207,6 +207,13 @@ function generalTable(d, o) {
     `<details class="pace"><summary>Pace per track</summary>${o.standings.map(r => `<div class="small" style="margin-top:12px"><b>${esc(r.team)}</b><div class="pace-grid">${o.tracks.map(t => `<div class="pace ${r.pace[t] == null ? 'off' : ''}"><span>${esc(trackName(d, t))}</span><b>${r.pace[t] == null ? '—' : pct(r.pace[t])}</b></div>`).join('')}</div></div>`).join('')}</details>`;
 }
 
+function autocrossTable(rows) {
+  if (!rows.length) return '<div class="empty">No first lap posted yet. Any full run counts, or <code>./feb practice --autocross --track ID</code> for one lap.</div>';
+  return `<div class="wrap"><table><thead><tr><th>#</th><th>Driver</th><th class="num">Total</th><th class="num">First lap</th><th class="num">Collisions</th><th>Run</th></tr></thead><tbody>` +
+    rows.map((r, i) => `<tr>${posCell(i)}<td class="driver">${avatar(r.team, i)}${esc(r.team)}${verifiedTag(r)}${r.mode === 'autocross' ? '<span class="tag info">one lap</span>' : ''}${auditTag(r)}</td>
+      <td class="num">${secs(r.total_s)} s</td><td class="num">${secs(r.first_lap_s)} s</td><td class="num">${r.collisions}</td><td class="muted small">${esc(r.started_at.slice(0, 10))} <code>${esc(r.id)}</code></td></tr>`).join('') + '</tbody></table></div>';
+}
+
 function trackCard(t, featured) {
   const best = t.standings.find(r => r.status === 'finished');
   return `<a class="card" href="#/tracks/${esc(t.id)}"><div class="pic">${t.preview ? `<img src="tracks/${esc(t.id)}.png" alt="" loading="lazy">` : ''}</div>
@@ -242,7 +249,7 @@ const pages = {
         <div class="cta"><a class="btn gold" href="#/docs">How to enter</a><a class="btn" href="#/tracks">Browse tracks</a><a class="btn" href="https://github.com/FEBAutonomous/feb-racing">GitHub</a></div></div>
       <div class="stats"><div class="stat"><b>${d.tracks.length}</b><span>tracks</span></div><div class="stat"><b>${runs}</b><span>runs posted</span></div><div class="stat"><b>${drivers}</b><span>drivers ranked</span></div><div class="stat"><b>${d.events.length}</b><span>competitions</span></div></div>
     </div>
-    <section><div class="sec"><div><h2>General leaderboard</h2><div class="sub">Score is the mean pace over every ${esc(kind)} track. Pace is the fastest posted total divided by yours, so 100% holds the best run; tracks not finished count 0%.</div></div>
+    <section><div class="sec"><div><h2>General leaderboard</h2><div class="sub">${kind === 'autocross' ? 'First sight of the track: the warm-up lap of any run, or a one-lap <code>./feb practice --autocross</code> run, plus 10 s per collision on that lap, over every cones track.' : `Score is the mean pace over every ${esc(kind)} track.`} Pace is the fastest posted total divided by yours, so 100% holds the best run; tracks not finished count 0%.</div></div>
       <div class="seg">${(d.overall || []).map(x => `<a class="${x.kind === kind ? 'on' : ''}" href="#/?kind=${x.kind}">${esc(x.name)} <span class="mono" style="opacity:.7">${x.tracks.length}</span></a>`).join('')}</div></div>
       ${generalTable(d, o)}</section>
     <section><div class="sec"><div><h2>Featured tracks</h2><div class="sub">The qualification set: ${d.qualify.laps} laps, ${d.qualify.max_collisions === 0 ? 'no collisions' : 'at most ' + d.qualify.max_collisions + ' collision'} on each to qualify.</div></div><a class="btn" href="#/tracks">All ${d.tracks.length} tracks</a></div>
@@ -267,7 +274,8 @@ const pages = {
         <div><h1>${esc(t.name)}</h1><div style="margin-top:10px">${kindTag(t)} ${t.qualifying ? '<span class="tag gold">featured</span>' : ''}</div>
           <div class="kv"><div><span>Length</span><b class="mono">${t.length} m</b></div><div><span>Direction</span><b>${esc(t.direction)}</b></div><div><span>Difficulty</span><b>${diff(t.difficulty)}</b></div><div><span>Walls</span><b>${t.walls ? 'yes' : 'no'}</b></div><div><span>Cones</span><b>${t.cones ? 'yes' : 'no'}</b></div><div><span>Attempts</span><b class="mono">${t.attempts}</b></div></div>
           <p class="small muted" style="margin-top:16px">Run it: <code>./feb practice --driver NAME --track ${esc(t.id)}</code>. Best attempt per driver. Verified results are reruns on the organiser's PC.</p></div></div>
-      <div class="sec"><h2>Leaderboard</h2></div>${resultsTable(t.standings, true)}`; },
+      <div class="sec"><div><h2>Trackdrive</h2><div class="sub">Warm-up plus ${d.qualify.laps} timed laps, 10 s per collision.</div></div></div>${resultsTable(t.standings, true)}
+      <div class="sec" style="margin-top:36px"><div><h2>Autocross</h2><div class="sub">The first lap, before the car has seen the track: the warm-up lap of any run, or a one-lap run.</div></div></div>${autocrossTable(t.autocross || [])}`; },
   '/practice': (d) => pages['/tracks'](d, '', {}),
   '/practice/:id': (d, id) => pages['/tracks/:id'](d, id),
   '/events': (d) => `<div class="sec"><div><h2>Competitions</h2><div class="sub">Official runs on the organiser's PC. Best attempt counts.</div></div></div>${d.events.map(e => `<section><h3 style="margin-top:0"><a href="#/events/${esc(e.id)}">${esc(e.title)}</a> <span class="tag info">${esc(e.status)}</span></h3><div class="muted small" style="margin:-4px 0 12px">${esc(e.date)} · ${esc(e.mode)} · track ${esc(e.track)} · ${e.attempts} attempts</div>${resultsTable(e.standings, false)}</section>`).join('') || '<div class="empty">No events yet.</div>'}`,

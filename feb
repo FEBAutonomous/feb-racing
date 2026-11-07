@@ -774,7 +774,7 @@ def cmd_practice(args):
     done = []
     for track in tracks:
         attempt = Attempt(image=IMAGE, track=track, sim_exe=exe, team=team_name(),
-                          rules=rules.Rules(laps=args.laps), port=PORT + 100, headless=args.headless,   # the box holds PORT
+                          rules=rules.Rules(laps=0 if args.autocross else args.laps), port=PORT + 100, headless=args.headless,   # the box holds PORT
                           stack_dir=pathlib.Path(args.ws).resolve() if args.ws else default_ws(), stack_cmd=args.stack, runs_dir=ROOT / "runs",
                           adapter=getattr(args, "adapter", ""))
         result = attempt.run()
@@ -786,8 +786,12 @@ def cmd_practice(args):
                                 "adapter": getattr(args, "adapter", ""), "packages": manifest.get("packages", [args.driver])}
             (attempt.dir / "result.json").write_text(json.dumps(result, indent=1))
         done.append((track.name, result, attempt.dir))
-        print(f"\n{track.name}: {result['status']}, laps {result['laps_completed']}, collisions {result['collisions']}, "
-              f"total {result['total_s']} s, best lap {result['best_lap_s']} s   ({attempt.dir.name})")
+        if args.autocross:
+            print(f"\n{track.name} autocross: {result['status']}, first lap {result['warmup_s']} s, collisions {result['collisions']}, "
+                  f"total {result['total_s']} s   ({attempt.dir.name})")
+        else:
+            print(f"\n{track.name}: {result['status']}, laps {result['laps_completed']}, collisions {result['collisions']}, "
+                  f"total {result['total_s']} s, best lap {result['best_lap_s']} s   ({attempt.dir.name})")
     if len(done) > 1:
         print("\n%-20s %-9s %5s %5s %9s" % ("track", "status", "laps", "hits", "total s"))
         for name, r, _ in done:
@@ -809,8 +813,9 @@ def unsubmitted_runs(team, include_all=False):
         r = json.loads(res.read_text())
         if (res.parent / ".submitted").exists() or r.get("team") != team or r.get("event") != "practice":
             continue
-        if (r.get("rules") or {}).get("laps", QUALIFY_LAPS) < QUALIFY_LAPS:
-            continue                        # a --laps N test run: not a result
+        laps = (r.get("rules") or {}).get("laps", QUALIFY_LAPS)
+        if 0 < laps < QUALIFY_LAPS:
+            continue                        # a --laps N test run: not a result (0 is an autocross run)
         if include_all or (r["status"] == "finished" and r["collisions"] <= QUALIFY_MAX_COLLISIONS):
             runs.append((res.parent, r))
     return runs
@@ -993,6 +998,7 @@ def main():
     practice.add_argument("--mode-name", dest="mode_name", help="which of its modes")
     practice.add_argument("--ws", help="workspace folder with your packages (default: feb-racing/stack)")
     practice.add_argument("--laps", type=int, default=10)
+    practice.add_argument("--autocross", action="store_true", help="the warm-up lap only, the car's first sight of the track; scores the autocross board")
     practice.add_argument("--headless", action="store_true")
     practice.set_defaults(func=cmd_practice)
     submit = sub.add_parser("submit", help="post the finished practice runs not yet posted, as one pull request")
