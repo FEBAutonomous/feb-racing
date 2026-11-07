@@ -154,6 +154,19 @@
   .kv { display: grid; grid-template-columns: repeat(3, auto); gap: 14px; margin-top: 18px; }
   .kv div { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-s); padding: 12px 16px; }
   .kv > div > span { display: block; color: var(--ink-3); font-size: 11px; text-transform: uppercase; letter-spacing: .14em; margin-bottom: 4px; } .kv b { font-weight: 700; font-size: 15px; }
+  .matrix { display: grid; grid-template-columns: 120px 1fr 1fr; gap: 10px; align-items: stretch; }
+  .mhead { text-align: center; font-weight: 800; font-size: 15px; letter-spacing: .02em; padding: 6px 0 2px; color: var(--ink); }
+  .mrow { display: flex; align-items: center; font-size: 11.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); padding-left: 4px; }
+  .mcell { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-s); padding: 14px 16px; color: inherit; min-height: 96px; transition: transform .15s, border-color .15s; }
+  a.mcell:hover { transform: translateY(-2px); border-color: rgba(253,181,21,.45); color: inherit; }
+  .mcell.off { opacity: .45; border-style: dashed; }
+  .mev { font-weight: 700; font-size: 13.5px; color: var(--ink-2); }
+  .mlead { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-weight: 700; }
+  .mlead .avatar { width: 24px; height: 24px; font-size: 11px; }
+  .mval { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--gold-2); margin-top: 4px; letter-spacing: -.02em; }
+  .mval small { font-size: 12px; color: var(--ink-3); font-family: Inter, sans-serif; font-weight: 500; }
+  .mnote { color: var(--ink-3); font-size: 12px; margin-top: 4px; }
+  @media (max-width: 820px) { .matrix { grid-template-columns: 1fr 1fr; } .mrow { grid-column: 1 / -1; padding-top: 8px; } .matrix > div:first-child { display: none; } }
   .empty { border: 1px dashed var(--line-2); border-radius: var(--r); padding: 28px; text-align: center; color: var(--ink-3); }
   ol.steps { padding-left: 0; list-style: none; counter-reset: s; max-width: 760px; } ol.steps li { counter-increment: s; margin: 10px 0; padding: 14px 16px 14px 56px; position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-s); }
   ol.steps li::before { content: counter(s); position: absolute; left: 14px; top: 12px; width: 28px; height: 28px; border-radius: 9px; background: var(--gold); color: #15110a; display: grid; place-items: center; font-weight: 800; font-family: var(--mono); }
@@ -217,10 +230,39 @@ function autocrossTable(rows) {
       <td class="num">${secs(r.total_s)} s</td><td class="num">${secs(r.first_lap_s)} s</td><td class="num">${r.collisions}</td><td class="muted small">${esc(r.started_at.slice(0, 10))} <code>${esc(r.id)}</code></td></tr>`).join('') + '</tbody></table></div>';
 }
 
+const discNames = { walls: 'Walls', cones: 'Cones' };
+const eventOrder = ['trackdrive', 'autocross', 'acceleration', 'skidpad', 'overall'];
+const eventBlurb = { trackdrive: `${10} timed laps after a warm-up, mean pace over every track`, autocross: 'first sight: the warm-up lap of any run, or a one-lap run', acceleration: '75 m straight, staged 0.3 m behind the line, stop within 75 m', skidpad: 'figure of eight: a lap right to settle, one timed, a lap left, one timed, averaged', overall: 'Formula Student Driverless points over the four events' };
+function matrix(d) {
+  const m = d.matrix || {};
+  const cell = (b, disc, ev) => {
+    if (!b) return `<div class="mcell off"><div class="mev">${esc(ev)}</div><div class="mnote">not an event here</div></div>`;
+    const top = b.standings[0];
+    const n = b.standings.length;
+    const val = !top ? '' : ev === 'overall' ? `${top.points} <small>/ ${b.max_points} pts</small>` : `${pct(top.score)}`;
+    return `<a class="mcell" href="#/board/${disc}/${ev}"><div class="mev">${esc(b.name)}${ev !== 'overall' ? ` <span class="mono" style="opacity:.6">${b.tracks.length} track${b.tracks.length === 1 ? '' : 's'}</span>` : ''}</div>
+      ${top ? `<div class="mlead">${avatar(top.team, 0)}<span>${esc(top.team)}</span></div><div class="mval">${val}</div><div class="mnote">${n} driver${n === 1 ? '' : 's'} ranked</div>` : '<div class="mnote" style="margin-top:14px">no result yet · be first</div>'}</a>`;
+  };
+  return `<div class="matrix"><div></div>${Object.keys(discNames).map(dk => `<div class="mhead">${discNames[dk]}</div>`).join('')}
+    ${eventOrder.map(ev => `<div class="mrow">${esc(ev)}</div>` + Object.keys(discNames).map(dk => cell((m[dk] || {})[ev], dk, ev)).join('')).join('')}</div>`;
+}
+function eventTable(rows, ev) {
+  if (!rows.length) return '<div class="empty">No run posted yet.</div>';
+  const segs = ev === 'skidpad' ? ['right 1', 'right 2', 'left 1', 'left 2'] : ['run'];
+  return `<div class="wrap"><table><thead><tr><th>#</th><th>Driver</th><th class="num">Total</th>${segs.map(x => `<th class="num">${x}</th>`).join('')}<th class="num">Collisions</th><th>Run</th></tr></thead><tbody>` +
+    rows.map((r, i) => `<tr>${posCell(i)}<td class="driver">${avatar(r.team, i)}${esc(r.team)}${verifiedTag(r)}${statusTag(r)}${auditTag(r)}</td><td class="num">${secs(r.total_s)} s</td>${segs.map((_, k) => `<td class="num">${secs((r.lap_times || [])[k])}</td>`).join('')}<td class="num">${r.collisions}</td><td class="muted small">${esc(r.started_at.slice(0, 10))} <code>${esc(r.id)}</code></td></tr>`).join('') + '</tbody></table></div>';
+}
+function overallTable(b) {
+  if (!b.standings.length) return '<div class="empty">No points yet.</div>';
+  const evs = eventOrder.filter(e => e !== 'overall');
+  return `<div class="wrap"><table><thead><tr><th>#</th><th>Driver</th><th class="num">Points</th>${evs.map(e => `<th class="num">${e}</th>`).join('')}</tr></thead><tbody>` +
+    b.standings.map((r, i) => `<tr>${posCell(i)}<td class="driver">${avatar(r.team, i)}${esc(r.team)}</td><td class="num score">${r.points} <span class="muted">/ ${b.max_points}</span></td>${evs.map(e => `<td class="num">${r.parts[e] == null ? '<span class="muted">—</span>' : r.parts[e]}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+}
+
 function trackCard(t, featured) {
   const best = t.standings.find(r => r.status === 'finished');
   return `<a class="card" href="#/tracks/${esc(t.id)}"><div class="pic">${t.preview ? `<img src="tracks/${esc(t.id)}.png" alt="" loading="lazy">` : ''}</div>
-    <div class="body"><div class="title"><span>${esc(t.name)}</span>${kindTag(t)}${featured ? '<span class="tag gold">featured</span>' : ''}</div>
+    <div class="body"><div class="title"><span>${esc(t.name)}</span>${kindTag(t)}${featured ? '<span class="tag gold">featured</span>' : ''}${t.event ? `<span class="tag plain" style="background:rgba(255,255,255,.06);color:var(--ink-2)">${esc(t.event)}</span>` : ''}</div>
     <div class="meta"><span class="mono">${t.length} m</span><span>${esc(t.direction)}</span>${diff(t.difficulty)}<span>${t.attempts} attempt${t.attempts === 1 ? '' : 's'}</span></div>
     <div class="best">${best ? `<span><b>${secs(best.total_s)} s</b> <span class="who">· lap ${secs(best.best_lap_s)} s</span></span><span class="who">${esc(best.team)}</span>` : '<span class="who">No finished run yet</span><span class="who">be first</span>'}</div></div></a>`;
 }
@@ -252,13 +294,21 @@ const pages = {
         <div class="cta"><a class="btn gold" href="#/docs">How to enter</a><a class="btn" href="#/tracks">Browse tracks</a><a class="btn" href="https://github.com/FEBAutonomous/feb-racing">GitHub</a></div></div>
       <div class="stats"><div class="stat"><b>${d.tracks.length}</b><span>tracks</span></div><div class="stat"><b>${runs}</b><span>runs posted</span></div><div class="stat"><b>${drivers}</b><span>drivers ranked</span></div><div class="stat"><b>${d.events.length}</b><span>competitions</span></div></div>
     </div>
-    <section><div class="sec"><div><h2>General leaderboard</h2><div class="sub">${kind === 'autocross' ? 'First sight of the track: the warm-up lap of any run, or a one-lap <code>./feb practice --autocross</code> run, plus 10 s per collision on that lap, over every cones track.' : `Score is the mean pace over every ${esc(kind)} track.`} Pace is the fastest posted total divided by yours, so 100% holds the best run; tracks not finished count 0%.</div></div>
-      <div class="seg">${(d.overall || []).map(x => `<a class="${x.kind === kind ? 'on' : ''}" href="#/?kind=${x.kind}">${esc(x.name)} <span class="mono" style="opacity:.7">${x.tracks.length}</span></a>`).join('')}</div></div>
+    <section><div class="sec"><div><h2>Trackdrive leaderboard</h2><div class="sub">Score is the mean pace over every ${esc(kind)} track: ${d.qualify.laps} timed laps plus 10 s per collision. Pace is the fastest posted total divided by yours, so 100% holds the best run; tracks not finished count 0%.</div></div>
+      <div class="seg">${(d.overall || []).map(x => `<a class="${x.kind === kind ? 'on' : ''}" href="#/?kind=${x.kind}">${esc(discNames[x.kind])} <span class="mono" style="opacity:.7">${x.tracks.length}</span></a>`).join('')}</div></div>
       ${generalTable(d, o)}</section>
+    <section><div class="sec"><div><h2>Events</h2><div class="sub">Two disciplines, four events each, the way the competitions score them: walls follows RoboRacer, cones follows Formula Student Driverless. Overall is FS Driverless points over the four.</div></div></div>
+      ${matrix(d)}</section>
     <section><div class="sec"><div><h2>Featured tracks</h2><div class="sub">The qualification set: ${d.qualify.laps} laps, ${d.qualify.max_collisions === 0 ? 'no collisions' : 'at most ' + d.qualify.max_collisions + ' collision'} on each to qualify.</div></div><a class="btn" href="#/tracks">All ${d.tracks.length} tracks</a></div>
       <div class="cards">${featured.map(t => trackCard(t, true)).join('')}</div></section>
     <section><div class="sec"><div><h2>Competitions</h2><div class="sub">Secret tracks, verified runs, best attempt counts.</div></div><a class="btn" href="#/events">Details</a></div>
       <div class="cards">${d.events.map(eventCard).join('') || '<div class="empty">No events scheduled.</div>'}</div></section>`;
+  },
+  '/board/:id': (d, id) => {
+    const [disc, ev] = id.split('/'); const b = ((d.matrix || {})[disc] || {})[ev]; if (!b) return '<div class="empty">Unknown board</div>';
+    const head = `<p class="eyebrow"><a href="#/">Leaderboards</a> &nbsp;/&nbsp; ${esc(discNames[disc] || disc)}</p><h1>${esc(discNames[disc])} · ${esc(b.name)}</h1><p class="lead" style="margin-top:10px">${esc(eventBlurb[ev] || '')}${ev !== 'overall' && b.tracks.length ? `. Over ${b.tracks.length === 1 ? 'the track' : b.tracks.length + ' tracks'}: ${b.tracks.map(t => `<a href="#/tracks/${esc(t)}">${esc(trackName(d, t))}</a>`).join(', ')}.` : ''}</p>`;
+    if (ev === 'overall') return head + `<p class="small muted">Trackdrive 200, autocross 100, acceleration 75 and skidpad 75 points, the FS Rules 2026 formulas on each board's result.</p>` + overallTable(b);
+    return head + generalTable(d, b);
   },
   '/tracks': (d, _, q) => {
     const f = q.f || 'all';
@@ -277,8 +327,9 @@ const pages = {
         <div><h1>${esc(t.name)}</h1><div style="margin-top:10px">${kindTag(t)} ${t.qualifying ? '<span class="tag gold">featured</span>' : ''}</div>
           <div class="kv"><div><span>Length</span><b class="mono">${t.length} m</b></div><div><span>Direction</span><b>${esc(t.direction)}</b></div><div><span>Difficulty</span><b>${diff(t.difficulty)}</b></div><div><span>Walls</span><b>${t.walls ? 'yes' : 'no'}</b></div><div><span>Cones</span><b>${t.cones ? 'yes' : 'no'}</b></div><div><span>Attempts</span><b class="mono">${t.attempts}</b></div></div>
           <p class="small muted" style="margin-top:16px">Run it: <code>./feb practice --driver NAME --track ${esc(t.id)}</code>. Best attempt per driver. Verified results are reruns on the organiser's PC.</p></div></div>
-      <div class="sec"><div><h2>Trackdrive</h2><div class="sub">Warm-up plus ${d.qualify.laps} timed laps, 10 s per collision.</div></div></div>${resultsTable(t.standings, true)}
-      <div class="sec" style="margin-top:36px"><div><h2>Autocross</h2><div class="sub">The first lap, before the car has seen the track: the warm-up lap of any run, or a one-lap run.</div></div></div>${autocrossTable(t.autocross || [])}`; },
+      ${t.event ? `<div class="sec"><div><h2>${esc(t.event[0].toUpperCase() + t.event.slice(1))}</h2><div class="sub">${esc(eventBlurb[t.event])}${t.event === 'skidpad' ? '; 0.2 s per cone' : '; 2 s per cone'}.</div></div></div>${eventTable(t.standings, t.event)}`
+      : `<div class="sec"><div><h2>Trackdrive</h2><div class="sub">Warm-up plus ${d.qualify.laps} timed laps, 10 s per collision.</div></div></div>${resultsTable(t.standings, true)}
+      <div class="sec" style="margin-top:36px"><div><h2>Autocross</h2><div class="sub">The first lap, before the car has seen the track: the warm-up lap of any run, or a one-lap run.</div></div></div>${autocrossTable(t.autocross || [])}`}`; },
   '/practice': (d) => pages['/tracks'](d, '', {}),
   '/practice/:id': (d, id) => pages['/tracks/:id'](d, id),
   '/events': (d) => `<div class="sec"><div><h2>Competitions</h2><div class="sub">Official runs on the organiser's PC. Best attempt counts.</div></div></div>${d.events.map(e => `<section><h3 style="margin-top:0"><a href="#/events/${esc(e.id)}">${esc(e.title)}</a> <span class="tag info">${esc(e.status)}</span></h3><div class="muted small" style="margin:-4px 0 12px">${esc(e.date)} · ${esc(e.mode)} · track ${esc(e.track)} · ${e.attempts} attempts</div>${resultsTable(e.standings, false)}</section>`).join('') || '<div class="empty">No events yet.</div>'}`,

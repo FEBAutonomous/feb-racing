@@ -53,6 +53,9 @@ angle in rad (±0.5236). Everything else is a sensor. `docs/devkit.md` has the f
    collision, DNF after 300 s. The result and a bag land in `runs/<id>/`.
    `--autocross` runs the warm-up lap only, the car's first sight of the track, for the Autocross board;
    every full run scores that board too, from its warm-up lap.
+   `--track skidpad` or `--track acceleration` (and their `_walls` twins) run the Formula Student
+   fixed-layout events under their own rules; the site's events matrix has a board for each and an
+   overall in FS Driverless points.
 5. **Post it.** `./feb submit`: opens a pull request with the result file; a check validates
    it and merges; you appear on that track's practice board as *unverified* until the organiser
    reruns your image.

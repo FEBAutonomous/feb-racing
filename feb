@@ -773,8 +773,10 @@ def cmd_practice(args):
     docker("rm", "-f", OPPONENT, PROXY)        # practice has its own container and port; a running feb up is left alone
     done = []
     for track in tracks:
+        track_json = json.loads((track / "track.json").read_text())
+        track_rules = rules.Rules.for_track(track_json) if track_json.get("event") in rules.EVENT_RULES else rules.Rules(laps=0 if args.autocross else args.laps)
         attempt = Attempt(image=IMAGE, track=track, sim_exe=exe, team=team_name(),
-                          rules=rules.Rules(laps=0 if args.autocross else args.laps), port=PORT + 100, headless=args.headless,   # the box holds PORT
+                          rules=track_rules, port=PORT + 100, headless=args.headless,   # the box holds PORT
                           stack_dir=pathlib.Path(args.ws).resolve() if args.ws else default_ws(), stack_cmd=args.stack, runs_dir=ROOT / "runs",
                           adapter=getattr(args, "adapter", ""))
         result = attempt.run()
@@ -786,7 +788,10 @@ def cmd_practice(args):
                                 "adapter": getattr(args, "adapter", ""), "packages": manifest.get("packages", [args.driver])}
             (attempt.dir / "result.json").write_text(json.dumps(result, indent=1))
         done.append((track.name, result, attempt.dir))
-        if args.autocross:
+        if result.get("event") in rules.EVENT_RULES:
+            print(f"\n{track.name} {result['event']}: {result['status']}, segments {result['lap_times']} s, collisions {result['collisions']}, "
+                  f"total {result['total_s']} s   ({attempt.dir.name})")
+        elif args.autocross:
             print(f"\n{track.name} autocross: {result['status']}, first lap {result['warmup_s']} s, collisions {result['collisions']}, "
                   f"total {result['total_s']} s   ({attempt.dir.name})")
         else:
@@ -815,7 +820,7 @@ def unsubmitted_runs(team, include_all=False):
             continue
         laps = (r.get("rules") or {}).get("laps", QUALIFY_LAPS)
         if 0 < laps < QUALIFY_LAPS:
-            continue                        # a --laps N test run: not a result (0 is an autocross run)
+            continue                        # a --laps N test run: not a result (0 is an autocross or FS event run)
         if include_all or (r["status"] == "finished" and r["collisions"] <= QUALIFY_MAX_COLLISIONS):
             runs.append((res.parent, r))
     return runs

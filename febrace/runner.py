@@ -6,6 +6,7 @@ members' `feb practice` (their window, their devkit container with ./stack mount
 """
 import datetime as dt
 import json
+import shlex
 import os
 import pathlib
 import socket
@@ -106,6 +107,9 @@ class Attempt:
 
     def _probe(self):
         cmd = f"python3 /tmp/feb_probe.py --laps {self.rules.total_laps} --timeout {self.rules.timeout_s}"
+        timing = json.loads((self.track / "track.json").read_text()).get("timing")
+        if timing:
+            cmd += " --timing " + shlex.quote(json.dumps(timing))
         proc = subprocess.Popen(["docker", "exec", self.container, "bash", "-c", f"{ROS_ENV} && {cmd}"],
                                 stdout=subprocess.PIPE, text=True)
         for line in proc.stdout:

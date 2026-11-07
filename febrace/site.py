@@ -49,20 +49,20 @@ def autocross_standings(rows):
     return sorted(best.values(), key=lambda r: (not r["verified"], r["total_s"]))
 
 
-# the general boards: a discipline, its name, which tracks count and which per-track standings feed it
-KINDS = (("walls", "Walls", "walls", "standings"), ("cones", "Cones", "cones", "standings"), ("autocross", "Autocross", "cones", "autocross"))
+# The boards. A discipline is what the car perceives, walls or cones; an event is what is
+# measured. Trackdrive and autocross run over every ordinary track of the discipline; skidpad
+# and acceleration are one fixed track each; overall turns the four into Formula Student
+# Driverless points (FS Rules 2026 D 9, table 3: trackdrive 200, autocross 100, skidpad 75,
+# acceleration 75) and sums them.
+DISCIPLINES = (("walls", "Walls"), ("cones", "Cones"))
+EVENTS = (("trackdrive", "Trackdrive"), ("autocross", "Autocross"), ("acceleration", "Acceleration"), ("skidpad", "Skidpad"))
+POINTS = {"trackdrive": 200, "autocross": 100, "skidpad": 75, "acceleration": 75}
 
 
-def overall(kind, tracks):
-    """One general board per kind of track, over EVERY track of that kind (featured or not).
-
-    A driver's pace on a track is the best finished total on that track divided by their own
-    finished total: 100 % is the fastest run posted, 50 % is twice as slow. Tracks the driver
-    has not finished count 0 %. The score is the mean over all tracks of the kind, so it rewards
-    both breadth (how many tracks you have finished) and pace, and tracks of very different
-    length weigh the same. Verified only if every leg counted is a verified run."""
-    _, name, track_kind, key = next(k for k in KINDS if k[0] == kind)
-    legs = [t for t in tracks if t["kind"] == track_kind]
+def pace_board(legs, key):
+    """Mean pace over `legs`: a driver's pace on a track is the fastest finished total there
+    divided by their own; unfinished tracks count 0 %; the score is the mean over all legs, so
+    breadth and speed both count and track length drops out."""
     best = {}
     for t in legs:
         finished = [r["total_s"] for r in t[key] if r["status"] == "finished"]
@@ -78,13 +78,63 @@ def overall(kind, tracks):
         pace = {tid: round(100.0 * best[tid] / r["total_s"], 1) for tid, r in per.items()}
         rows.append({"team": team,
                      "score": round(sum(pace.values()) / len(legs), 1) if legs else 0.0,
-                     "finished": len(per), "of": len(legs),
-                     "pace": pace,
+                     "finished": len(per), "of": len(legs), "pace": pace,
                      "verified": all(r.get("verified") for r in per.values()),
-                     "totals": {tid: r["total_s"] for tid, r in per.items()}})
+                     "totals": {tid: r["total_s"] for tid, r in per.items()},
+                     "best_s": min(r["total_s"] for r in per.values())})
     rows.sort(key=lambda r: (-r["score"], not r["verified"], r["team"]))
-    return {"kind": kind, "name": name, "tracks": [t["id"] for t in legs],
-            "featured": [t["id"] for t in legs if t["qualifying"]], "standings": rows}
+    return rows
+
+
+def board(discipline, event, tracks):
+    if event in ("trackdrive", "autocross"):
+        legs = [t for t in tracks if t["kind"] == discipline and not t.get("event")]
+        key = "standings" if event == "trackdrive" else "autocross"
+    else:
+        legs = [t for t in tracks if t["kind"] == discipline and t.get("event") == event]
+        key = "standings"
+    return {"discipline": discipline, "event": event, "name": dict(EVENTS)[event], "kind": discipline,
+            "tracks": [t["id"] for t in legs], "featured": [t["id"] for t in legs if t["qualifying"]],
+            "standings": pace_board(legs, key) if legs else []}
+
+
+def points(event, rows):
+    """FS Driverless points per driver from a board. Trackdrive and autocross use the time
+    formulas on the driver's mean pace (time ratio r = 100 / score); skidpad and acceleration
+    use the autonomous ranking formula (D 9.2.2)."""
+    pmax = POINTS[event]
+    out = {}
+    if event in ("skidpad", "acceleration"):
+        n = len(rows)
+        for rank, r in enumerate(rows, 1):
+            out[r["team"]] = round(pmax * (n + 1 - rank) / n, 1)
+        return out
+    for r in rows:
+        if r["score"] <= 0:
+            out[r["team"]] = 0.0
+            continue
+        ratio = 100.0 / r["score"]
+        if event == "trackdrive":      # D 9.3.3 with Tmax = 2 Tmin, plus the completed-laps 2.5 % per lap, ten laps, scaled by tracks finished
+            pts = 0.75 * pmax * max(0.0, 2.0 / ratio - 1.0) + 0.025 * pmax * 10 * r["finished"] / r["of"]
+        else:                          # D 9.3.2 with Tmax = 1.4 Tmin (D 9.1 table 11)
+            pts = 0.1 * pmax + 0.9 * pmax * max(0.0, (1.4 - ratio) / 0.4)
+        out[r["team"]] = round(pts, 1)
+    return out
+
+
+def overall_board(discipline, boards):
+    totals, parts = {}, {}
+    for event, _ in EVENTS:
+        b = boards.get(event)
+        if not b or not b["tracks"]:
+            continue
+        for team, pts in points(event, b["standings"]).items():
+            totals[team] = totals.get(team, 0.0) + pts
+            parts.setdefault(team, {})[event] = pts
+    rows = [{"team": team, "points": round(pts, 1), "parts": parts[team]} for team, pts in totals.items()]
+    rows.sort(key=lambda r: (-r["points"], r["team"]))
+    return {"discipline": discipline, "event": "overall", "name": "Overall", "max_points": sum(POINTS[e] for e, _ in EVENTS if boards.get(e) and boards[e]["tracks"]),
+            "standings": rows}
 
 
 def build():
@@ -106,6 +156,7 @@ def build():
         full = [r for r in rows if r.get("mode") != "autocross"]      # the 10-lap board ignores one-lap runs
         tracks.append({"id": name, "name": t["name"], "length": t["length"], "direction": t["direction"],
                        "walls": bool(t["walls"]), "cones": bool(t["cones"]), "kind": "cones" if t["cones"] else "walls",
+                       "event": t.get("event"),
                        "preview": preview.exists(),
                        "qualifying": t.get("qualifying", True),
                        "category": t.get("category", "feb"), "difficulty": int(t.get("difficulty", 0)),
@@ -120,12 +171,19 @@ def build():
         e["track"] = pathlib.Path(str(e["track"])).name
 
     practice = [r for r in all_results if r["event"] == "practice"]
-    track_ids = [t["id"] for t in tracks if t["qualifying"]]
+    track_ids = [t["id"] for t in tracks if t["qualifying"] and not t.get("event")]
     for team in teams:
         team["qualification"], team["qualified"] = rules_mod.qualification(team["name"], track_ids, practice)
 
+    matrix = {}
+    for d, _ in DISCIPLINES:
+        boards = {event: board(d, event, tracks) for event, _ in EVENTS}
+        boards["overall"] = overall_board(d, boards)
+        matrix[d] = boards
+
     data = {"teams": teams, "tracks": tracks, "events": events,
-            "overall": [overall(k[0], tracks) for k in KINDS],
+            "overall": [board(d, "trackdrive", tracks) for d, _ in DISCIPLINES],
+            "matrix": matrix,
             "qualify": {"laps": rules_mod.Rules().laps, "max_collisions": rules_mod.QUALIFY_MAX_COLLISIONS},
             "generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
     (OUT / "data.json").write_text(json.dumps(data, indent=1, default=str))

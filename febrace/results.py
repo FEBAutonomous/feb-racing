@@ -20,7 +20,13 @@ def build(attempt, events, started):
     audit = next((e for e in events if e.get("event") == "audit"), {})
     lap_times = end.get("lap_times") or []
     collisions = end.get("collisions") or 0
-    status, timed, penalty, total, best = rules_mod.score(attempt.rules, lap_times, collisions)
+    if attempt.rules.event in rules_mod.EVENT_RULES:
+        lines = [(e["name"], e["t_sim"], e.get("side", 0.0)) for e in events if e.get("event") == "line"]
+        stopped = any(e.get("event") == "stopped" for e in events) and not any(n == "stop_end" for n, _, _ in lines)
+        status, timed, penalty, total, best = rules_mod.score_event(attempt.rules, lines, stopped, collisions)
+        lap_times = timed
+    else:
+        status, timed, penalty, total, best = rules_mod.score(attempt.rules, lap_times, collisions)
     if end.get("error"):
         status = "error"
     return {
@@ -32,13 +38,15 @@ def build(attempt, events, started):
         "image_digest": attempt.image_digest(),
         "track": attempt.track.name,
         "mode": attempt.rules.mode,
+        "event": attempt.rules.event,
         "rules": attempt.rules.to_dict(),
         "started_at": started.isoformat(timespec="seconds"),
         "duration_s": end.get("t"),
         "status": status,
         "laps_completed": end.get("laps") or 0,
         "real_time_factor": end.get("real_time_factor"),   # simulated / wall time over the run; ~1.0 is healthy
-        "warmup_s": lap_times[0] if lap_times else None,
+        "warmup_s": (lap_times[0] if lap_times else None) if attempt.rules.event not in rules_mod.EVENT_RULES else None,
+        "lines": [e for e in events if e.get("event") in ("line", "stopped")],
         "lap_times": [round(t, 3) for t in timed],
         "collisions": collisions,
         "collision_times": [e["t"] for e in events if e.get("event") == "collision"],

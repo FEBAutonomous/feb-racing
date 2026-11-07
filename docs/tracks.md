@@ -52,6 +52,18 @@ ROS `map.yaml`). Grey "unknown" pixels count as not drivable.
 | `walls.diameter` | air-duct diameter (0.33 m like the league; omit the key for a cone-only track) |
 | `cones.spacing` | metres between cones on each edge, blue left, yellow right (omit for none) |
 | `cones.from` | a JSON file of cones (`[{x, y, color}]`) used as they are instead of generated ones: real layouts |
+| `event` | (track.json, written by `tools/track_fs_events.py`) `skidpad` or `acceleration`: a Formula Student fixed-layout event. The centreline is the whole programme, `timing.lines` are the lines the harness times from the car's true position, and `feb practice` applies that event's rules (FS Rules 2026 D 4, D 5, D 10.1.7) |
+
+## The fixed-layout events
+
+`tools/track_fs_events.py` writes `skidpad`, `skidpad_walls`, `acceleration` and `acceleration_walls`
+to the 2026 Formula Student rules: the figure of eight with 18.25 m between centres, 15.25 m and
+21.25 m circles, 17 cones inside and 13 outside each, a 3 m lane; the 75 m straight with cones every
+5 m. A skidpad run is enter, a lap right, a timed lap right, a lap left, a timed lap left, exit and
+stop within 25 m; its time is the two timed laps averaged plus 0.2 s per cone. Acceleration is the
+start line to the finish line plus 2 s per cone, then a stop within 75 m. The walls versions carry
+the same geometry in air-duct walls with the crossing left open. `tools/oracle_driver.py` drives
+either programme from ground truth, for checking the harness.
 
 ## The picker
 

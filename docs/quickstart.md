@@ -32,6 +32,7 @@ do steps 2 and 3 above, then copy your old `stack/` contents into the new `stack
 | `./feb stop` | ends that; the box stays |
 | `./feb practice --driver my_driver` | scored runs, competition rules, every practice track of your driver's kind |
 | `./feb practice --driver my_driver --autocross --track loop_cones` | one lap, first sight of the track, for the Autocross board |
+| `./feb practice --driver my_driver --track skidpad` | the FS skidpad programme (also `acceleration`, `skidpad_walls`, `acceleration_walls`) |
 | `./feb submit` | posts the clean runs to the board and your code to the team repo |
 | `./feb update` | new code, new image, new simulator |
 | `./feb reset` | a fresh box; your files are untouched |
