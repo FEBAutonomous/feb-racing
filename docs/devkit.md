@@ -176,9 +176,21 @@ copies the package and fills in the hooks, or watches the flag from the node tha
 
 ## Looking at things
 
-Foxglove, the app on the laptop, is the everyday tool: `feb up` opens it connected to the box.
-By hand: Open connection, Foxglove WebSocket, `ws://localhost:8765`. Scans, markers, plots, bag
-playback.
+`feb up` serves **FEB Auto dash**, a one-page dashboard, at <http://localhost:8780>; the line it
+prints also gives the laptop's network and tailnet addresses, so a phone, a teammate's laptop or
+anyone on the tailnet can open the same page. It shows the map being built (cones by colour, the
+raceline coloured by planned speed, the MPC prediction, the scan, the car), the run (where, driver,
+comp mode, track, cap, lap) with the supervisor's and the driver's state rails, speed and steering
+with a 30 s trace, the battery meter on the car (from `/feb/battery`), the status line, the camera,
+every topic with its rate and the nodes that are up. The results site has a Dash page that finds
+the dash on your own computer and keeps the car's address. No install, no GUI in the box: a small relay runs inside the box over `docker exec` and the
+page is served from the laptop. `--no-dash` turns it off; `FEB_DASH_PORT=8790` moves it;
+`./feb dash` serves it on its own beside a `feb up --no-dash`, a bag playing in the box, or on the
+car (`./feb dash --car`).
+
+Foxglove, the app on the laptop, is the tool for everything else: `feb up` opens it connected to
+the box. By hand: Open connection, Foxglove WebSocket, `ws://localhost:8765`. Scans, markers,
+plots, bag playback.
 
 rviz2 and anything else with a window run on the box's desktop, which is a browser tab:
 `./feb shell --gui`, then `rviz2 &` or `rqt_graph &` from any box terminal. It is software
@@ -219,11 +231,26 @@ Add your own below those, `skidpad`, `acceleration`, `corridor`, whatever the co
 is just a launch file and a cap; the supervisor does not care how many there are. The starter
 kit's three packages all carry a `card.yaml`; `./feb new NAME` copies one under your name.
 
-Two optional keys: `packages:`, the list of your own packages that `feb submit` copies to the team
-repo (default: just the driver); and `adapter:`, settings for the sim adapter's throttle law. Leave
-`adapter:` out unless your driver runs its own speed controller, as the racer does; then
+Three optional keys: `packages:`, the list of your own packages that `feb submit` copies to the team
+repo (default: just the driver); `adapter:`, settings for the sim adapter's throttle law; and
+`dash:`, what FEB Auto dash shows for your driver. Leave `adapter:` out unless your driver runs its
+own speed controller, as the racer does; then
 `adapter: {speed_per_throttle: 25.11, throttle_kp: 0.0, throttle_ki: 0.0}` makes the adapter a
 plain pass-through so two loops don't fight.
+
+`dash:` is optional too; the dash works for any driver without it, drawing whatever you publish
+under `/feb/` (PoseArray as cones, with the colour code in `orientation.w`: 1 blue, 2 yellow,
+3 orange; Path as a line, `/feb/raceline` coloured by the speed in `position.z`; PoseStamped as
+the car (`/feb/pose`) or a target; OccupancyGrid as a map; String, Float32 and Bool as tiles).
+The section pins things to the banner and the tiles:
+
+```yaml
+dash:
+  title: FEB cone racer        # banner
+  note: mapping lap, then MPC  # banner, one line
+  tiles: [/feb/fit, /feb/sysid_phase]   # topics shown first in the Car panel
+  car_length: 0.5              # metres, how big the car is drawn
+```
 
 ## Getting a driver onto the car
 
@@ -273,6 +300,7 @@ the one-time Jetson setup are in `docs/build-car.md`.
 |---|---|---|
 | `FEB_DEVKIT_PORT` | 4567 | the bridge; the simulator connects here |
 | `FEB_FOXGLOVE_PORT` | 8765 | the Foxglove WebSocket |
+| `FEB_DASH_PORT` | 8780 | feb dash, served by the laptop (or the car) for any browser |
 | `FEB_VNC_PORT` | 6080 | the web desktop |
 | `FEB_BOX_NAME` | feb-box | the container; change it to run two boxes side by side |
 | `FEB_DEVKIT_GUI_IMAGE` | `ghcr.io/febautonomous/feb-devkit:gui` | the box's image |

@@ -27,8 +27,10 @@ do steps 2 and 3 above, then copy your old `stack/` contents into the new `stack
 | `./feb code` | VS Code inside the box |
 | `./feb shell --gui` | plus a desktop in the browser for rviz2, rqt, turtlesim |
 | `./feb new my_driver` | your own driver in `stack/`, the starter copied and renamed; `--from feb_cone_driver`, `--ws DIR` |
-| `./feb up --driver my_driver` | your driver races in the simulator, Foxglove opens |
+| `./feb up --driver my_driver` | your driver races in the simulator, Foxglove opens, feb dash at <http://localhost:8780> (any browser on the network) |
 | `./feb up --deadman --driver my_driver` | the same under the car's rules: hold SPACE to drive, M for manual |
+| `./feb up --no-dash ...` | the same without FEB Auto dash (the browser dashboard at <http://localhost:8780>, also reachable from other machines) |
+| `./feb dash` | the dashboard on its own, beside a running stack, a bag, or on the car |
 | `./feb stop` | ends that; the box stays |
 | `./feb practice --driver my_driver` | scored runs, competition rules, every practice track of your driver's kind |
 | `./feb practice --driver my_driver --autocross --track loop_cones` | one lap, first sight of the track, for the Autocross board |

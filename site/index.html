@@ -178,7 +178,7 @@
 <header><div class="bar">
   <a class="brand" href="#/"><img src="logo.svg" alt="">FEBAUTO <small>Racing</small></a>
   <nav id="nav">
-    <a href="#/">Leaderboards</a><a href="#/tracks">Tracks</a><a href="#/events">Competitions</a><a href="#/teams">Drivers</a><a href="#/docs">How to enter</a>
+    <a href="#/">Leaderboards</a><a href="#/tracks">Tracks</a><a href="#/events">Competitions</a><a href="#/teams">Drivers</a><a href="#/docs">How to enter</a><a href="#/dash">Dash</a>
   </nav>
 </div></header>
 <main id="main"></main>
@@ -339,6 +339,13 @@ const pages = {
       <span class="small muted">Rules: ${r.warmup_laps ?? 1} warm-up + ${r.laps ?? 10} timed laps, +${r.collision_penalty_s ?? 10} s per collision, DSQ above ${r.max_collisions ?? 10} collisions, ${r.timeout_s ?? 300} s limit.</span></p>${resultsTable(e.standings, false)}${races(e)}`; },
   '/teams': (d) => `<div class="sec"><div><h2>Drivers</h2><div class="sub">Qualification: on every featured track, a verified run of ${d.qualify.laps} laps with ${d.qualify.max_collisions === 0 ? 'no collisions' : 'at most ' + d.qualify.max_collisions + ' collision'}. <span class="tag ok plain">✓</span> verified &nbsp; <span class="tag warn plain">~</span> self-reported, awaiting the nightly rerun &nbsp; – not yet.</div></div></div>
     <div class="wrap"><table><thead><tr><th>Driver</th><th>Members</th>${d.tracks.filter(t => t.qualifying).map(t => `<th>${esc(t.name)}</th>`).join('')}<th>Image</th></tr></thead><tbody>${d.teams.map((t, i) => `<tr><td class="driver">${avatar(t.name, i)}${esc(t.name)}${t.qualified ? '<span class="tag ok">qualified</span>' : ''}</td><td>${(t.members || []).map(esc).join(', ')}</td>${d.tracks.filter(t => t.qualifying).map(tr => `<td>${qualMark((t.qualification || {})[tr.id])}</td>`).join('')}<td><code>${esc(t.image)}</code></td></tr>`).join('')}</tbody></table></div>`,
+  '/dash': () => { setTimeout(dashProbe, 0); return `<div class="sec"><div><h2>FEB Auto dash</h2><div class="sub">The live dashboard of a running <code>feb up</code>: the map being built, the raceline, the car, the supervisor state, every topic's rate.</div></div></div>
+    <div class="pod" style="margin-bottom:18px"><div id="dash-local"><span class="muted">Looking for a dash on this computer…</span></div></div>
+    <div class="pod"><div style="font-weight:700;margin-bottom:6px">The car</div>
+      <p class="small muted" style="margin:0 0 10px">On the car's network (its hotspot, the USB link or the tailnet) the dash is served by the Jetson. This page cannot check that address for you, so set it once and it is remembered in this browser.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><input id="dash-car" class="mono" style="flex:1;min-width:240px;padding:10px 12px;border-radius:12px;border:1px solid var(--line-2);background:rgba(255,255,255,.04);color:var(--ink);font-size:14px" placeholder="http://192.168.55.1:8780" value="${esc(localStorage.getItem('feb.dash.car') || '')}" onchange="localStorage.setItem('feb.dash.car', this.value.trim())">
+      <a class="btn gold" href="#" onclick="const v=document.getElementById('dash-car').value.trim()||'http://192.168.55.1:8780'; localStorage.setItem('feb.dash.car', v); window.open(v, '_blank'); return false;">Open the car's dash</a></div></div>
+    <p class="small muted" style="margin-top:18px">Everyone's own run is at <code>http://localhost:8780</code> on the computer that runs <code>feb up</code> (<code>--no-dash</code> turns it off, <code>FEB_DASH_PORT</code> moves it). <code>./feb dash</code> serves it on its own, beside a bag or on the car.</p>`; },
   '/docs': (d) => `<div class="sec"><div><h2>How to enter</h2><div class="sub">From zero to a posted lap time.</div></div></div>
     <ol class="steps">
       <li>Clone the repo, run <code>./feb setup</code>, then <code>./feb up</code> to drive manually.</li>
@@ -352,6 +359,21 @@ const pages = {
 };
 
 let cache;
+async function dashProbe() {
+  // localhost is a trusted origin even from an https page, so this one address can be checked; a private
+  // address (the car) cannot be, which is why the car gets a button instead.
+  const box = document.getElementById('dash-local'); if (!box) return;
+  const url = 'http://localhost:8780';
+  try {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch(url + '/meta.json', { signal: ctl.signal, cache: 'no-store' }); clearTimeout(t);
+    const m = await r.json();
+    const bits = [m.where === 'car' ? 'the car' : 'simulator', m.driver, m.mode, m.track].filter(Boolean).map(esc).join(' · ');
+    box.innerHTML = `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-weight:700">Dash found on this computer</div><div class="small muted">${bits || 'feb up is running'}</div></div><a class="btn gold" href="${url}" target="_blank" rel="noopener" style="margin-left:auto">Open FEB Auto dash</a></div>`;
+  } catch (e) {
+    box.innerHTML = `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div><div style="font-weight:700">No dash on this computer</div><div class="small muted">Start one with <code>./feb up --driver my_driver</code> (or <code>./feb dash</code> beside a running stack), then reload this page.</div></div><a class="btn" href="${url}" target="_blank" rel="noopener" style="margin-left:auto">Try localhost anyway</a></div>`;
+  }
+}
 async function render() {
   cache = cache || await (await fetch('data.json', { cache: 'no-store' })).json(); const d = cache;
   const [path, qs] = (location.hash.slice(1) || '/').split('?');

@@ -59,6 +59,7 @@ PORT = int(os.environ.get("FEB_DEVKIT_PORT", 4567))   # override when another br
 OPPONENT_PORT = PORT - 1
 PROXY_PORT = PORT - 2
 FOXGLOVE_PORT = int(os.environ.get("FEB_FOXGLOVE_PORT", 8765))   # foxglove_bridge inside the box
+DASH_PORT = int(os.environ.get("FEB_DASH_PORT", 8780))           # feb dash, served by this laptop (or the car) for any browser on the network
 VNC_PORT = int(os.environ.get("FEB_VNC_PORT", 6080))             # the box's web desktop
 APPS = {                                  # --apps shorthands; anything else is run as given
     "rviz": "rviz2 -d /home/autodrive_devkit/rviz/default.rviz",
@@ -331,6 +332,7 @@ def cmd_stop(_=None):
     if box_state() == "running":
         docker("exec", BOX, "feb-up", "--stop")
         docker("exec", BOX, "bash", "-c", "pkill -f feb_tools/key_joy 2>/dev/null; true")   # a dead-man terminal closed without Q
+        docker("exec", BOX, "pkill", "-f", "feb_dash/relay.py")                           # the dash relay, if its feb up died without cleaning up
     kill_sim()
     print("stopped")
 
@@ -537,6 +539,8 @@ def driver_command(args):
     stack = f"ros2 launch {args.driver} {launch} mode:={mode} {extra}".strip()
     print(f"driver {args.driver} ({manifest.get('kind', 'any')}), mode {mode}: {stack}")
     args.adapter = ",".join(f"{k}={v}" for k, v in (manifest.get("adapter") or {}).items())   # sim adapter settings the driver asks for
+    args.dash_card = manifest.get("dash") or {}         # optional: title, note, tiles, car_length for feb dash
+    args.resolved_mode = mode
     return stack, m.get("max_speed")
 
 
@@ -575,6 +579,7 @@ def cmd_up(args):
     print(f"starting the house nodes in {BOX} (workspace {ws}) ...")
     house = subprocess.Popen(up)
     sim_proc = None
+    dash_proc = None if args.no_dash else start_dash(dash_meta(args, track))
     try:
         if not args.no_sim and not args.car:
             deadline = time.time() + 900                 # a first C++ build on a slow laptop takes that long
@@ -602,6 +607,8 @@ def cmd_up(args):
     finally:
         if sim_proc and sim_proc.poll() is None:
             sim_proc.terminate()
+        if dash_proc and dash_proc.poll() is None:
+            dash_proc.terminate()
         docker("exec", BOX, "feb-up", "--stop")
         docker("rm", "-f", OPPONENT, PROXY)
         try:
@@ -702,6 +709,94 @@ def open_foxglove():
         cmd = [str(app), FOXGLOVE_URL]
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f"opened {app.name} on ws://localhost:{FOXGLOVE_PORT}")
+
+
+# ------------------------------------------------------------------ feb dash
+
+DASH_DIR = ROOT / "devkit" / "feb_dash"
+
+
+def dash_meta(args, track=None):
+    """What the dash banner shows: sim or car, driver and mode, track, cap, the card's dash section."""
+    meta = {"where": "car" if getattr(args, "car", False) else "sim",
+            "driver": getattr(args, "driver", None) or (getattr(args, "stack", "") or None),
+            "mode": getattr(args, "resolved_mode", None) or getattr(args, "mode_name", None), "max_speed": getattr(args, "max_speed", None),
+            "track": pathlib.Path(track).name if track else None, "box": BOX, "host": platform.node(), "started": time.time()}
+    try:
+        meta["team"] = json.loads(CONFIG.read_text()).get("team")
+    except (OSError, ValueError):
+        pass
+    card = dict(getattr(args, "dash_card", None) or {})
+    for k in ("title", "note"):
+        if k in card:
+            meta[k] = str(card.pop(k))
+    meta["dash"] = card                           # tiles, car_length, anything else the page understands
+    return meta
+
+
+def dash_addresses():
+    """The addresses this machine answers on: localhost, the LAN and the tailnet if tailscale is here."""
+    out = [f"http://localhost:{DASH_PORT}"]
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))          # no packet is sent; this just picks the outbound interface
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and not ip.startswith("127."):
+            out.append(f"http://{ip}:{DASH_PORT}")
+    except OSError:
+        pass
+    if shutil.which("tailscale"):
+        try:
+            r = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=3)
+            ip = r.stdout.strip().splitlines()[0] if r.returncode == 0 and r.stdout.strip() else ""
+            if ip:
+                out.append(f"http://{ip}:{DASH_PORT}  (tailnet)")
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return out
+
+
+def start_dash(meta, port=None):
+    """Serve the dash from this machine: a small server here, the relay inside the box over
+    `docker exec -i`. Nothing about the box changes (no new port, no new image). Never fatal:
+    when the port is taken or the server cannot start, feb up carries on without it."""
+    port = port or DASH_PORT
+    if not (DASH_DIR / "server.py").exists():
+        return None
+    import socket
+    with socket.socket() as s:
+        if s.connect_ex(("127.0.0.1", port)) == 0:
+            print(f"feb dash: port {port} is taken (another feb up, or set FEB_DASH_PORT); no dash this run")
+            return None
+    cmd = [sys.executable, str(DASH_DIR / "server.py"), "--port", str(port), "--box", BOX,
+           "--relay", f"{ROOT_IN}/devkit/feb_dash/relay.py", "--meta", json.dumps(meta), "--watch-stdin"]
+    try:
+        # stdin is a pipe from this process: if feb ends in any way, the pipe closes and the dash stops with it
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as e:
+        print(f"feb dash: not started ({e})")
+        return None
+    print("FEB Auto dash: " + "   ".join(dash_addresses()))
+    return proc
+
+
+def cmd_dash(args):
+    """The dash on its own: beside a `feb up --no-dash`, a bag playing in the box, or anything else
+    publishing in the box. Runs until Ctrl-C."""
+    ensure_box()
+    global DASH_PORT
+    if args.port:
+        DASH_PORT = args.port
+    args.dash_card = {}
+    proc = start_dash(dash_meta(args), DASH_PORT)
+    if proc is None:
+        fail("the dash did not start")
+    try:
+        proc.wait()
+    except KeyboardInterrupt:
+        proc.terminate()
 
 
 # ------------------------------------------------------------------ practice and submit
@@ -992,6 +1087,7 @@ def main():
     up.add_argument("--opponent", choices=list(OPPONENT_SPEED) + ["map"], help="house racer in car 2: slow | normal | fast (lidar driver) or map")
     up.add_argument("--camera", help="starting camera: \"God's Eye\", Trackcam, \"Driver's Eye\", ...")
     up.add_argument("--no-foxglove", action="store_true", help="do not open Foxglove")
+    up.add_argument("--no-dash", action="store_true", help=f"do not serve FEB Auto dash (the browser dashboard on port {DASH_PORT})")
     up.add_argument("--look", choices=["visual", "simple"], help="dressed scene or the bare one (default: last choice in the app, else visual)")
     up.add_argument("--fps", type=int, help="render-rate cap (default 60, 0 = uncapped); keeps simulated time at real time")
     up.add_argument("--camera-hz", type=float, help="bridge camera readback rate (default 10, 0 = every message)")
@@ -1031,6 +1127,10 @@ def main():
     code = sub.add_parser("code", help="VS Code attached to the box")
     code.add_argument("--cursor", action="store_true", help="Cursor instead of VS Code")
     code.set_defaults(func=cmd_code)
+    dash = sub.add_parser("dash", help=f"the browser dashboard on its own (feb up serves it already): http://localhost:{DASH_PORT}")
+    dash.add_argument("--port", type=int, help=f"default {DASH_PORT}, or FEB_DASH_PORT")
+    dash.add_argument("--car", action="store_true", help="label the banner CAR instead of SIM")
+    dash.set_defaults(func=cmd_dash)
     sub.add_parser("stop", help="end feb up; the box keeps running").set_defaults(func=cmd_stop)
     sub.add_parser("reset", help="remove the box; the next command makes a fresh one").set_defaults(func=cmd_reset)
     logs = sub.add_parser("logs", help="what feb up printed (the build, the house nodes, your stack); -f follows")

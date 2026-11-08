@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FEB Auto dash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #090b10; --bg-2: #0e1118; --panel: #12161f; --panel-2: #171c27; --panel-3: #1d2330; --line: #222838;
+    --ink: #e8ebf2; --ink-2: #aab2c5; --ink-3: #6c7589; --accent: #f5c518; --accent-2: #4f8cff; --good: #3ddc84; --warn: #ff9f43; --bad: #ff5c5c;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 14px/1.5 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #11151f 0%, var(--bg-2) 45%, #0c0f16 100%); flex-wrap: wrap; position: relative; }
+  header::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: linear-gradient(90deg, var(--accent) 0, rgba(245,197,24,.0) 38%); opacity: .7; }
+  .brand { font-weight: 800; letter-spacing: .1em; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+  .brand i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+  .brand i.live { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 6px var(--accent); } 50% { box-shadow: 0 0 18px var(--accent), 0 0 30px rgba(245,197,24,.35); } }
+  .brand em { font-style: normal; color: var(--accent); }
+  .brand small { font-weight: 500; color: var(--ink-3); font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase; margin-left: 2px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chip { padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-2); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .chip b { color: var(--ink); font-weight: 700; }
+  .chip.sim { border-color: #2a4d8f; color: #9bbcff; } .chip.car { border-color: #8f4a2a; color: #ffb48f; }
+  .chip.live { border-color: #1f6b43; color: var(--good); } .chip.dead { border-color: #6b1f1f; color: var(--bad); } .chip.wait { color: var(--warn); border-color: #6b4a1f; }
+  .state { margin-left: auto; font-weight: 700; font-size: 13px; padding: 5px 12px; border-radius: 10px; background: var(--panel-3); color: var(--ink-2); }
+  .state.auto { background: #163b27; color: var(--good); } .state.manual { background: #163a5e; color: #9bbcff; } .state.stop { background: #4a1818; color: var(--bad); }
+  main { flex: 1; display: grid; grid-template-columns: 1fr 360px; gap: 12px; padding: 12px 16px 16px; min-height: 0; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .panel h3 { margin: 0; padding: 9px 14px; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; background: linear-gradient(180deg, var(--panel-2), var(--panel)); }
+  .panel h3 .right { margin-left: auto; display: flex; gap: 6px; }
+  .map { position: relative; min-height: 420px; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .toggles button, .panel h3 button { font: inherit; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: 3px 8px; cursor: pointer; }
+  .panel h3 button.on { color: var(--ink); border-color: #3a4358; background: var(--panel-3); }
+  .legend { position: absolute; left: 12px; bottom: 10px; display: flex; gap: 12px; font-size: 11px; color: var(--ink-3); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  .scale { position: absolute; right: 14px; bottom: 12px; font-size: 11px; color: var(--ink-3); }
+  .scale div { height: 2px; background: var(--ink-3); margin-top: 3px; }
+  .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; }
+  .side > .panel { flex: 0 0 auto; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); }
+  .tile { background: var(--panel); padding: 10px 14px; min-height: 64px; }
+  .tile.wide { grid-column: 1 / -1; }
+  .tile .k { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+  .tile .v { font-size: 22px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
+  .tile .v small { font-size: 12px; color: var(--ink-3); font-weight: 500; margin-left: 4px; }
+  .tile .v.text { font-size: 13.5px; font-weight: 600; color: var(--ink-2); word-break: break-word; }
+  .tile.dim .v { color: var(--ink-3); }
+  .bar { height: 3px; background: var(--panel-3); border-radius: 2px; margin-top: 8px; position: relative; overflow: hidden; }
+  .bar b { position: absolute; top: 0; bottom: 0; left: 0; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: 2px; transition: width .15s linear; }
+  .bar.centre b { left: 50%; transform-origin: left; background: var(--accent); }
+  .bar.centre::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--ink-3); }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; background: rgba(61,220,132,.12); color: var(--good); }
+  tr.slow .pill { background: rgba(255,159,67,.12); color: var(--warn); } tr.stale .pill { background: var(--panel-2); color: var(--ink-3); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
+  td.name { width: 48%; } td.type { width: 26%; } td.hz { width: 26%; padding-right: 12px; }
+  td { padding: 5px 14px; border-top: 1px solid var(--line); white-space: nowrap; }
+  td.name { color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+  td.type { overflow: hidden; text-overflow: ellipsis; }
+  td.type { color: var(--ink-3); font-size: 11.5px; }
+  td.hz { text-align: right; color: var(--good); }
+  tr.stale td.hz, tr.stale td.name { color: var(--ink-3); }
+  tr.slow td.hz { color: var(--warn); }
+  .nodes { padding: 10px 14px; color: var(--ink-2); font-size: 12px; line-height: 1.7; }
+  .nodes span { display: inline-block; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 0 7px; margin: 0 6px 4px 0; }
+  img.cam { width: 100%; display: block; background: #000; }
+  .run { padding: 10px 14px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: 13px; }
+  .run .k { color: var(--ink-3); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; }
+  .run .v { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rail { display: flex; align-items: center; gap: 4px; padding: 8px 14px 10px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .rail .lbl { width: 100%; color: var(--ink-3); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .rail .lbl span { letter-spacing: 0; text-transform: none; color: var(--ink-2); font-size: 11.5px; }
+  .rail .st { padding: 3px 9px; border-radius: 7px; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--ink-3); background: var(--panel-2); border: 1px solid var(--line); }
+  .rail .st.on { color: #15110a; background: var(--accent); border-color: var(--accent); box-shadow: 0 0 14px rgba(245,197,24,.35); }
+  .rail .st.on.good { background: var(--good); border-color: var(--good); box-shadow: 0 0 14px rgba(61,220,132,.35); }
+  .rail .st.on.bad { background: var(--bad); border-color: var(--bad); color: #fff; box-shadow: 0 0 14px rgba(255,92,92,.35); }
+  .rail .st.on.blue { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .rail .arrow { color: var(--ink-3); font-size: 11px; }
+  .batt { display: flex; align-items: center; gap: 12px; }
+  .batt .cell { position: relative; width: 64px; height: 28px; border: 2px solid var(--ink-3); border-radius: 6px; padding: 2px; flex: none; }
+  .batt .cell::after { content: ""; position: absolute; right: -7px; top: 8px; width: 4px; height: 8px; background: var(--ink-3); border-radius: 0 2px 2px 0; }
+  .batt .cell b { display: block; height: 100%; border-radius: 3px; background: var(--good); transition: width .3s; }
+  .batt.warn .cell b { background: var(--warn); } .batt.bad .cell b { background: var(--bad); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .batt .v { margin-top: 0; } .batt .txt { color: var(--ink-3); font-size: 11.5px; margin-top: 2px; }
+  canvas.trace { width: 100%; height: 56px; display: block; margin-top: 6px; }
+  .empty { color: var(--ink-3); padding: 14px; font-size: 13px; }
+  footer { padding: 6px 16px 10px; color: var(--ink-3); font-size: 11.5px; display: flex; gap: 16px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><i id="dot"></i>FEB <em>Auto</em> <small>dash</small></div>
+  <div class="chips" id="chips"></div>
+  <div class="state" id="state">—</div>
+</header>
+<main>
+  <section class="panel map">
+    <h3>Map
+      <span class="right" id="layers"></span>
+    </h3>
+    <div style="flex:1; position:relative; min-height:380px">
+      <canvas id="c"></canvas>
+      <div class="legend">
+        <span><i style="background:#4f8cff"></i>blue</span><span><i style="background:#f5c518"></i>yellow</span><span><i style="background:#ff8a3d"></i>orange</span>
+        <span><i style="background:#cdd4e4"></i>scan</span><span><i style="background:#5a6378"></i>seen walls</span><span><i style="background:linear-gradient(90deg,#4f8cff,#f5c518)"></i>raceline, slow→fast</span><span><i style="background:#ff5c9a"></i>prediction</span>
+      </div>
+      <div class="scale" id="scale">10 m<div style="width:60px"></div></div>
+    </div>
+  </section>
+  <aside class="side">
+    <section class="panel"><h3>Run <span class="right mono" id="elapsed"></span></h3>
+      <div class="run" id="run"></div>
+      <div class="rail" id="rail-sup"></div>
+      <div class="rail" id="rail-phase"></div>
+    </section>
+    <section class="panel"><h3>Car</h3><div class="tiles" id="tiles"></div></section>
+    <section class="panel" id="campanel" style="display:none"><h3>Camera <span class="right mono" id="camhz"></span></h3><img class="cam" id="cam" alt=""></section>
+    <section class="panel"><h3>Topics <span class="right mono" id="topiccount"></span></h3><table id="topics"></table></section>
+    <section class="panel"><h3>Nodes</h3><div class="nodes" id="nodes"></div></section>
+  </aside>
+</main>
+<footer><span id="url"></span><span id="age"></span><span>FEB autonomous · FEB Auto dash</span></footer>
+<script>
+(() => {
+  const S = { topics: {}, nodes: [], relay: "connecting", t: 0 };
+  let META = {};
+  const COL = { 0: "#8a93a8", 1: "#4f8cff", 2: "#f5c518", 3: "#ff8a3d" };
+  const LINE_COL = { "/feb/raceline": "#3ddc84", "/feb/path": "#3ddc84", "/feb/centreline": "#8a93a8", "/feb/mpc_prediction": "#ff5c9a" };
+  const layers = { scan: true, walls: true, cones: true, map: true, lines: true, grid: true, trail: true, follow: false, fit: true };
+  const walls = []; let wallsAt = 0;   // scan points accumulated in the world frame as the car drives: a map for drivers that publish none
+  const view = { s: 30, x: 0, y: 0, drag: null };
+  const trail = []; let trailFrame = "";
+  const gridImgs = {};   // topic -> {img, key}
+  const el = id => document.getElementById(id);
+  const canvas = el("c"), ctx = canvas.getContext("2d");
+  const now = () => Date.now() / 1000;
+  const fresh = (name, within = 2.0) => { const t = S.topics[name]; return t && t.data !== undefined && (S.t - (t.at || 0)) < within; };
+
+  // ---- layer buttons
+  const lay = el("layers");
+  for (const k of Object.keys(layers)) {
+    const b = document.createElement("button"); b.textContent = k; b.className = layers[k] ? "on" : "";
+    b.onclick = () => { layers[k] = !layers[k]; b.className = layers[k] ? "on" : ""; };
+    lay.appendChild(b);
+  }
+
+  // ---- stream
+  function connect() {
+    const es = new EventSource("/events");
+    es.addEventListener("state", e => { const m = JSON.parse(e.data); Object.assign(S, m.state); META = m.meta || {}; renderBanner(); renderSide(); });
+    es.addEventListener("tick", e => {
+      const m = JSON.parse(e.data); S.t = m.t; S.relay = "live";
+      for (const [n, en] of Object.entries(m.topics || {})) {
+        const cur = S.topics[n] || (S.topics[n] = {});
+        cur.type = en.type; cur.hz = en.hz;
+        if (en.data !== undefined) { cur.data = en.data; cur.at = m.t; }
+      }
+      if (m.nodes) S.nodes = m.nodes;
+    });
+    es.addEventListener("relay", e => { S.relay = JSON.parse(e.data); renderBanner(); });
+    es.onerror = () => { S.relay = "dash server unreachable"; renderBanner(); es.close(); setTimeout(connect, 2000); };
+  }
+  connect();
+
+  // ---- banner
+  function renderBanner() {
+    const chips = [];
+    const where = META.where || "sim";
+    chips.push(`<span class="chip ${where}">${where === "car" ? "CAR" : "SIM"}</span>`);
+    if (META.title) chips.push(`<span class="chip"><b>${esc(META.title)}</b></span>`);
+    if (META.driver) chips.push(`<span class="chip"><b>${esc(META.driver)}</b>${META.mode ? " · " + esc(META.mode) : ""}</span>`);
+    if (META.team) chips.push(`<span class="chip">${esc(META.team)}</span>`);
+    if (META.note) chips.push(`<span class="chip">${esc(META.note)}</span>`);
+    const live = S.relay === "live" && (now() - S.t) < 3 ? "live" : (S.relay === "connecting" || S.relay === "starting" ? "wait" : "dead");
+    chips.push(`<span class="chip ${live}">${live === "live" ? "LIVE" : esc(String(S.relay))}</span>`);
+    el("chips").innerHTML = chips.join("");
+    el("dot").className = live === "live" ? "live" : "";
+    const st = S.topics["/feb/state"];
+    const text = st && st.data ? String(st.data) : (S.topics["/feb/mode"] && S.topics["/feb/mode"].data ? String(S.topics["/feb/mode"].data) : "no supervisor state");
+    const se = el("state"); se.textContent = text;
+    const low = text.toLowerCase();
+    se.className = "state " + (low.startsWith("autonomous") ? "auto" : low.startsWith("manual") ? "manual" : low.startsWith("stop") || low.startsWith("estop") ? "stop" : "");
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  // ---- side panels
+  function tile(k, v, unit, cls) { return `<div class="tile ${cls || ""}"><div class="k">${esc(k)}</div><div class="v ${typeof v === "string" && cls !== "num" ? "text" : ""}">${v}${unit ? `<small>${unit}</small>` : ""}</div></div>`; }
+  function num(v, d = 2) { return (v === null || v === undefined || isNaN(v)) ? "—" : Number(v).toFixed(d); }
+  const hist = [];   // [t, v, cmd] for the speed trace
+  function phaseOf() {
+    const st = S.topics["/feb/status"], md = S.topics["/feb/mode"];
+    const text = st && st.data ? String(st.data).toLowerCase() : "";
+    if (text.startsWith("halt") || text.includes("| stopped:") || text.startsWith("stopped")) return ["HALTED", "bad"];
+    if (text.startsWith("mapping")) return ["MAPPING", "blue"];
+    if (text.startsWith("racing")) return ["RACING", "good"];
+    if (md && md.data) return [String(md.data).toUpperCase(), "good"];
+    return [null, ""];
+  }
+  function renderRun() {
+    const T = S.topics;
+    const sup = T["/feb/state"] && T["/feb/state"].data ? String(T["/feb/state"].data) : "";
+    const [supState, supReason] = sup.includes(":") ? [sup.split(":")[0].trim().toUpperCase(), sup.split(":").slice(1).join(":").trim()] : [sup.toUpperCase(), ""];
+    const [phase, phaseCls] = phaseOf();
+    const status = T["/feb/status"] && T["/feb/status"].data ? String(T["/feb/status"].data) : "";
+    const lap = (status.match(/lap (\d+)/) || [])[1];
+    const live = T["/feb/mission/live"];
+    const rows = [["where", META.where === "car" ? "the car" : "simulator"], ["driver", META.driver || "—"], ["comp mode", META.mode || "—"], ["track", META.track || "—"],
+                  ["speed cap", META.max_speed ? META.max_speed + " m/s" : "—"], ["lap", lap !== undefined ? lap : "—"],
+                  ["nodes", S.nodes.length], ["mission", live && live.data !== undefined ? (live.data ? "live" : "waiting") : "—"]];
+    el("run").innerHTML = rows.map(([k, v]) => `<div><div class="k">${k}</div><div class="v" title="${esc(String(v))}">${esc(String(v))}</div></div>`).join("");
+    const chain = (states, on, cls) => states.map((x, i) => `<span class="st ${x === on ? "on " + (cls[x] || "") : ""}">${x}</span>${i < states.length - 1 ? '<span class="arrow">›</span>' : ""}`).join("");
+    const supStates = ["IDLE", "MANUAL", "AUTONOMOUS", "STOP"]; if (supState && !supStates.includes(supState)) supStates.push(supState);
+    el("rail-sup").innerHTML = `<div class="lbl">supervisor <span>${esc(supReason)}</span></div>` + chain(supStates, supState, { IDLE: "", MANUAL: "blue", AUTONOMOUS: "good", STOP: "bad" });
+    const phases = ["MAPPING", "RACING", "HALTED"]; if (phase && !phases.includes(phase)) phases.splice(phases.length - 1, 0, phase);
+    el("rail-phase").innerHTML = `<div class="lbl">driver <span>${esc(status.split("|")[0].trim())}</span></div>` + chain(phases, phase, { MAPPING: "blue", RACING: "good", HALTED: "bad", [phase || ""]: phaseCls });
+    const t0 = META.started; el("elapsed").textContent = t0 ? fmtTime(Math.max(0, now() - t0)) : "";
+  }
+  function fmtTime(sec) { const m = Math.floor(sec / 60), s = Math.floor(sec % 60); return (m ? m + "m " : "") + String(s).padStart(2, "0") + "s"; }
+  function batteryTile() {
+    const b = fresh("/feb/battery", 15) ? S.topics["/feb/battery"].data : null;
+    const txt = S.topics["/feb/battery_text"] && S.topics["/feb/battery_text"].data ? String(S.topics["/feb/battery_text"].data) : "";
+    if (!b) return `<div class="tile wide dim"><div class="k">battery</div><div class="v text">${esc(txt || (META.where === "car" ? "no telemetry yet" : "no battery in the simulator"))}</div></div>`;
+    const pct = b.pct === null || b.pct === undefined ? null : Math.max(0, Math.min(100, b.pct));
+    const cls = pct === null ? "" : pct < 20 ? "bad" : pct < 50 ? "warn" : "";
+    return `<div class="tile wide"><div class="k">battery</div><div class="batt ${cls}"><div class="cell"><b style="width:${pct === null ? 0 : pct}%"></b></div>
+      <div><div class="v">${num(b.v, 1)}<small>V</small>${pct !== null ? ` &nbsp;${num(pct, 0)}<small>%</small>` : ""}${b.i !== undefined && b.i !== null ? ` &nbsp;<small>${num(Math.abs(b.i), 1)} A</small>` : ""}</div><div class="txt">${esc(txt.replace(/^[\d.]+ V\s+\d+%\s*/, ""))}</div></div></div></div>`;
+  }
+  function drawTrace() {
+    const c = document.getElementById("trace"); if (!c) return;
+    const r = c.getBoundingClientRect(); const W = c.width = Math.round(r.width * devicePixelRatio), H = c.height = Math.round(r.height * devicePixelRatio);
+    const g = c.getContext("2d"); g.clearRect(0, 0, W, H);
+    const t1 = now(), t0 = t1 - 30;
+    const cap = Math.max(0.5, META.max_speed || 3, ...hist.map(h => Math.max(Math.abs(h[1]), Math.abs(h[2]))));
+    g.strokeStyle = "#1d2330"; g.lineWidth = 1; g.beginPath(); for (let i = 1; i < 4; i++) { g.moveTo(0, H * i / 4); g.lineTo(W, H * i / 4); } g.stroke();
+    if (META.max_speed) { const y = H - (META.max_speed / cap) * (H - 4) - 2; g.strokeStyle = "rgba(255,92,92,.5)"; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); g.setLineDash([]); }
+    const line = (idx, col, wdt) => { g.strokeStyle = col; g.lineWidth = wdt * devicePixelRatio; g.beginPath(); let first = true;
+      for (const h of hist) { if (h[0] < t0) continue; const x = (h[0] - t0) / 30 * W, y = H - (Math.abs(h[idx]) / cap) * (H - 4) - 2; first ? g.moveTo(x, y) : g.lineTo(x, y); first = false; } g.stroke(); };
+    line(2, "rgba(170,178,197,.5)", 1); line(1, "#f5c518", 1.6);
+  }
+  function renderSide() {
+    const T = S.topics, tiles = [];
+    renderRun();
+    const odom = fresh("/odom") ? T["/odom"].data : null, drive = fresh("/drive") ? T["/drive"].data : null;
+    const cap = META.max_speed || 3.0;
+    tiles.push(tile("speed", odom ? num(odom.v) : "—", "m/s", "num") .replace("</div></div>", `</div><div class="bar"><b style="width:${odom ? Math.min(100, Math.abs(odom.v) / cap * 100) : 0}%"></b></div></div>`));
+    tiles.push(tile("commanded", drive ? num(drive.speed) : "—", "m/s", "num").replace("</div></div>", `</div><div class="bar"><b style="width:${drive ? Math.min(100, Math.abs(drive.speed) / cap * 100) : 0}%"></b></div></div>`));
+    tiles.push(tile("steer", drive ? num(drive.steer * 180 / Math.PI, 1) : "—", "°", "num").replace("</div></div>", `</div><div class="bar centre"><b style="width:${drive ? Math.min(50, Math.abs(drive.steer) / 0.45 * 50) : 0}%; transform: scaleX(${drive && drive.steer < 0 ? -1 : 1})"></b></div></div>`));
+    tiles.push(tile("yaw rate", odom ? num(odom.w) : "—", "rad/s", "num"));
+    tiles.push(`<div class="tile wide"><div class="k">speed, last 30 s <small style="color:var(--ink-3)">· yellow actual, grey commanded, red cap</small></div><canvas class="trace" id="trace"></canvas></div>`);
+    tiles.push(batteryTile());
+    for (const n of (META.dash && META.dash.tiles) || []) {
+      const t = T[n]; if (!t || t.data === undefined) { tiles.push(tile(n.replace(/^\/feb\//, ""), "—", "", "dim")); continue; }
+      tiles.push(tile(n.replace(/^\/feb\//, ""), typeof t.data === "object" ? esc(JSON.stringify(t.data)) : esc(String(t.data)), "", typeof t.data === "number" ? "num" : ""));
+    }
+    for (const n of ["/feb/status", "/feb/mode"]) { const t = T[n]; if (t && t.data !== undefined) tiles.push(`<div class="tile wide ${fresh(n, 3) ? "" : "dim"}"><div class="k">${esc(n.slice(5))}</div><div class="v text">${esc(String(t.data))}</div></div>`); }
+    for (const [n, t] of Object.entries(T)) {   // every other small value under /feb/
+      if (!n.startsWith("/feb/") || t.data === undefined || typeof t.data === "object" || ["/feb/status", "/feb/mode", "/feb/state", "/feb/mission/live", "/feb/battery_text"].includes(n) || ((META.dash && META.dash.tiles) || []).includes(n)) continue;
+      tiles.push(tile(n.slice(5), typeof t.data === "number" ? num(t.data, 3) : esc(String(t.data)), "", typeof t.data === "number" ? "num" : ""));
+    }
+    el("tiles").innerHTML = tiles.join("");
+    drawTrace();
+
+    const cam = Object.entries(T).find(([n, t]) => t.data && t.data.jpg);
+    el("campanel").style.display = cam ? "" : "none";
+    if (cam) { el("cam").src = "data:image/jpeg;base64," + cam[1].data.jpg; el("camhz").textContent = cam[0] + " " + num(cam[1].hz, 1) + " Hz"; }
+
+    const names = Object.keys(T).sort();
+    el("topiccount").textContent = names.length + " topics";
+    el("topics").innerHTML = names.map(n => {
+      const t = T[n]; const hz = t.hz || 0; const cls = hz === 0 ? "stale" : hz < 2 ? "slow" : "";
+      return `<tr class="${cls}"><td class="name mono" title="${esc(n)}">${esc(n)}</td><td class="type">${esc(t.type || "")}</td><td class="hz mono"><span class="pill">${t.hz === null ? "not read" : hz ? num(hz, 1) + " Hz" : "—"}</span></td></tr>`;
+    }).join("") || `<tr><td class="empty">no topics yet: is the stack up?</td></tr>`;
+    el("nodes").innerHTML = S.nodes.length ? S.nodes.map(n => `<span>${esc(n)}</span>`).join("") : `<span class="empty">no nodes</span>`;
+    el("age").textContent = S.t ? `data ${num(Math.max(0, now() - S.t), 1)} s old` : "";
+    el("url").textContent = location.host;
+  }
+
+  // ---- map
+  function carPose() {
+    if (fresh("/feb/pose")) { const p = S.topics["/feb/pose"].data; return { x: p.x, y: p.y, yaw: p.yaw, frame: "map" }; }
+    if (fresh("/odom")) { const p = S.topics["/odom"].data; return { x: p.x, y: p.y, yaw: p.yaw, frame: "odom" }; }
+    return null;
+  }
+  function resize() {
+    const r = canvas.parentElement.getBoundingClientRect();
+    if (canvas.width !== Math.round(r.width * devicePixelRatio) || canvas.height !== Math.round(r.height * devicePixelRatio)) {
+      canvas.width = Math.round(r.width * devicePixelRatio); canvas.height = Math.round(r.height * devicePixelRatio);
+    }
+  }
+  canvas.addEventListener("wheel", e => { e.preventDefault(); view.s *= Math.exp(-e.deltaY * 0.0015); view.s = Math.min(400, Math.max(2, view.s)); }, { passive: false });
+  canvas.addEventListener("mousedown", e => { view.drag = { x: e.clientX, y: e.clientY }; layers.follow = layers.fit = false; for (const b of lay.children) if (b.textContent === "follow" || b.textContent === "fit") b.className = ""; });
+  window.addEventListener("mousemove", e => { if (!view.drag) return; view.x -= (e.clientX - view.drag.x) / view.s; view.y += (e.clientY - view.drag.y) / view.s; view.drag = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener("mouseup", () => view.drag = null);
+
+  function draw() {
+    resize();
+    const W = canvas.width, H = canvas.height, dpr = devicePixelRatio;
+    { const o = fresh("/odom") ? S.topics["/odom"].data : null, d = fresh("/drive") ? S.topics["/drive"].data : null; const tn = now();
+      if ((o || d) && (!hist.length || tn - hist[hist.length - 1][0] > 0.1)) { hist.push([tn, o ? o.v : 0, d ? d.speed : 0]); while (hist.length && hist[0][0] < tn - 31) hist.shift(); } }
+    const pose = carPose();
+    if (pose && layers.follow) { view.x = pose.x; view.y = pose.y; }
+    const wb = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
+    if (layers.fit && walls.length) for (let i = 0; i < walls.length; i += 7) { const p = walls[i]; if (p[0] < wb.x0) wb.x0 = p[0]; if (p[0] > wb.x1) wb.x1 = p[0]; if (p[1] < wb.y0) wb.y0 = p[1]; if (p[1] > wb.y1) wb.y1 = p[1]; }
+    if (layers.fit) {   // frame everything in the map frame: the map's cones, the raceline, the car; else the walls seen so far
+      let xs = [], ys = [];
+      for (const [n, t] of Object.entries(S.topics)) if (t.data && t.data.pts && t.data.frame === "map") for (const p of t.data.pts) { xs.push(p[0]); ys.push(p[1]); }
+      const mapPts = xs.length;
+      if (mapPts && pose) { xs.push(pose.x); ys.push(pose.y); }
+      if (mapPts) {
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        const want = Math.min(400, Math.max(2, 0.86 * Math.min(W / dpr / Math.max(4, x1 - x0 + 4), H / dpr / Math.max(4, y1 - y0 + 4))));
+        view.s += (want - view.s) * 0.15; view.x += ((x0 + x1) / 2 - view.x) * 0.15; view.y += ((y0 + y1) / 2 - view.y) * 0.15;
+      } else if (pose) { if (!walls.length) { view.x = pose.x; view.y = pose.y; view.s += (28 - view.s) * 0.1; } else { const want = Math.min(400, Math.max(2, 0.86 * Math.min(W / dpr / Math.max(6, wb.x1 - wb.x0 + 4), H / dpr / Math.max(6, wb.y1 - wb.y0 + 4)))); view.s += (want - view.s) * 0.1; view.x += ((wb.x0 + wb.x1) / 2 - view.x) * 0.1; view.y += ((wb.y0 + wb.y1) / 2 - view.y) * 0.1; } }
+    }
+    const s = view.s * dpr;
+    if (pose) {
+      if (trailFrame !== pose.frame) { trail.length = 0; trailFrame = pose.frame; }
+      const last = trail[trail.length - 1];
+      if (!last || Math.hypot(last[0] - pose.x, last[1] - pose.y) > 0.05) { trail.push([pose.x, pose.y]); if (trail.length > 3000) trail.shift(); }
+    }
+    if (pose && fresh("/scan", 1.5) && S.topics["/scan"].at !== wallsAt) {
+      wallsAt = S.topics["/scan"].at; const d = S.topics["/scan"].data; const c = Math.cos(pose.yaw), sn = Math.sin(pose.yaw);
+      if (walls.frame !== pose.frame) { walls.length = 0; walls.frame = pose.frame; walls.seen = new Set(); }
+      walls.seen = walls.seen || new Set();
+      for (let i = 0; i < d.r.length; i++) { const rr = d.r[i]; if (rr === null || rr <= 0.05 || rr >= d.rmax * 0.95) continue; const a = d.amin + i * d.ainc, lx = rr * Math.cos(a), ly = rr * Math.sin(a);
+        const wx = pose.x + c * lx - sn * ly, wy = pose.y + sn * lx + c * ly; const key = Math.round(wx * 20) * 100003 + Math.round(wy * 20);   // one point per 5 cm cell
+        if (walls.seen.has(key)) continue; walls.seen.add(key); walls.push([wx, wy]); }
+      if (walls.length > 250000) { walls.splice(0, 50000); walls.seen = new Set(walls.map(p => Math.round(p[0] * 20) * 100003 + Math.round(p[1] * 20))); }
+    }
+    const X = x => W / 2 + (x - view.x) * s, Y = y => H / 2 - (y - view.y) * s;
+    const toWorld = (pt, frame) => {   // car-frame data onto the map through the car pose
+      if (frame === "map" || frame === "odom" || !pose) return pt;
+      const c = Math.cos(pose.yaw), sn = Math.sin(pose.yaw);
+      return [pose.x + c * pt[0] - sn * pt[1], pose.y + sn * pt[0] + c * pt[1]];
+    };
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#0b0e15"; ctx.fillRect(0, 0, W, H);
+    // grid lines every 5 m
+    ctx.strokeStyle = "#151a26"; ctx.lineWidth = 1;
+    const step = view.s > 40 ? 1 : view.s > 8 ? 5 : 20;
+    const x0 = Math.floor((view.x - W / 2 / s) / step) * step, x1 = view.x + W / 2 / s, y0 = Math.floor((view.y - H / 2 / s) / step) * step, y1 = view.y + H / 2 / s;
+    ctx.beginPath();
+    for (let x = x0; x <= x1; x += step) { ctx.moveTo(X(x), 0); ctx.lineTo(X(x), H); }
+    for (let y = y0; y <= y1; y += step) { ctx.moveTo(0, Y(y)); ctx.lineTo(W, Y(y)); }
+    ctx.stroke();
+    const T = S.topics;
+    // occupancy grids
+    if (layers.grid) for (const [n, t] of Object.entries(T)) {
+      if (t.type !== "OccupancyGrid" || !t.data || !t.data.png) continue;
+      let g = gridImgs[n];
+      if (!g || g.key !== t.at) { g = gridImgs[n] = { img: new Image(), key: t.at }; g.img.src = "data:image/png;base64," + t.data.png; }
+      if (!g.img.complete) continue;
+      const d = t.data; ctx.globalAlpha = 0.55; ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(g.img, X(d.ox), Y(d.oy + d.h * d.res), d.w * d.res * s, d.h * d.res * s);
+      ctx.globalAlpha = 1;
+    }
+    // seen walls
+    const hasMap = Object.values(S.topics).some(t => t.data && ((t.data.pts && t.data.frame === "map") || t.data.png));
+    if (layers.walls && walls.length && !hasMap) { /* a published map takes over from the seen walls */ ctx.fillStyle = "rgba(170,178,197,0.7)"; const r = Math.max(2, Math.min(5, 0.09 * s)); for (const p of walls) ctx.fillRect(X(p[0]) - r / 2, Y(p[1]) - r / 2, r, r); }
+    // trail
+    if (layers.trail && trail.length > 1) { ctx.strokeStyle = "rgba(170,178,197,0.35)"; ctx.lineWidth = 1.5 * dpr; ctx.beginPath(); trail.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke(); }
+    // paths
+    if (layers.lines) for (const [n, t] of Object.entries(T)) {
+      if (t.type !== "Path" || !t.data || !t.data.pts || (n.includes("prediction") && !fresh(n, 1.5))) continue;   // racelines are published once; predictions are live
+      const pts = t.data.pts, vs = pts.map(p => p[2] || 0), vmin = Math.min(...vs), vmax = Math.max(...vs);
+      ctx.lineWidth = (n === "/feb/mpc_prediction" ? 3 : 2.2) * dpr; ctx.lineCap = "round";
+      if (n === "/feb/raceline" && vmax - vmin > 0.3) {   // the planned speed along the line: blue slow, yellow fast
+        for (let i = 1; i < pts.length; i++) { const a = toWorld(pts[i - 1], t.data.frame), b = toWorld(pts[i], t.data.frame), u = (vs[i] - vmin) / (vmax - vmin);
+          ctx.strokeStyle = `hsl(${Math.round(215 - 170 * u)} 90% ${Math.round(55 + 10 * u)}%)`; ctx.beginPath(); ctx.moveTo(X(a[0]), Y(a[1])); ctx.lineTo(X(b[0]), Y(b[1])); ctx.stroke(); }
+      } else {
+        ctx.strokeStyle = LINE_COL[n] || "#a78bfa"; ctx.beginPath();
+        pts.forEach((p, i) => { const w = toWorld(p, t.data.frame); i ? ctx.lineTo(X(w[0]), Y(w[1])) : ctx.moveTo(X(w[0]), Y(w[1])); });
+        ctx.stroke();
+      }
+    }
+    // scan
+    if (layers.scan && fresh("/scan", 1.5) && pose) {
+      const d = T["/scan"].data; ctx.fillStyle = "rgba(205,212,228,0.95)"; const r = Math.max(1.5, 1.6 * dpr);
+      for (let i = 0; i < d.r.length; i++) { const rr = d.r[i]; if (rr === null || rr <= 0.05 || rr >= d.rmax) continue; const a = d.amin + i * d.ainc; const w = toWorld([rr * Math.cos(a), rr * Math.sin(a)], "car"); ctx.fillRect(X(w[0]) - r / 2, Y(w[1]) - r / 2, r, r); }
+    }
+    // cones: PoseArrays. The map persists (drawn with an outline), the live detections are solid dots.
+    if (layers.cones) for (const [n, t] of Object.entries(T)) {
+      if (t.type !== "PoseArray" || !t.data || !t.data.pts) continue;
+      const isMap = t.data.frame === "map" || n.includes("map");
+      if (!isMap && !fresh(n, 1.5)) continue;
+      if (isMap && !layers.map) continue;
+      const rad = Math.max(2.5 * dpr, (isMap ? 0.14 : 0.1) * s);
+      for (const p of t.data.pts) { const w = toWorld(p, t.data.frame); const c = COL[p[2]] || COL[0];
+        ctx.beginPath(); ctx.arc(X(w[0]), Y(w[1]), rad, 0, Math.PI * 2);
+        if (isMap) { ctx.fillStyle = c + "cc"; ctx.fill(); ctx.strokeStyle = "#0b0e15"; ctx.lineWidth = 1.5 * dpr; ctx.stroke(); } else { ctx.fillStyle = c; ctx.fill(); } }
+    }
+    // target
+    if (fresh("/feb/target")) { const p = T["/feb/target"].data; const w = toWorld([p.x, p.y], p.frame); ctx.strokeStyle = "#ff5c9a"; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(X(w[0]), Y(w[1]), Math.max(4 * dpr, 0.2 * s), 0, Math.PI * 2); ctx.stroke(); }
+    // car
+    if (pose) {
+      const L = (META.dash && META.dash.car_length) || 0.5, Wd = L * 0.55;
+      const c = Math.cos(pose.yaw), sn = Math.sin(pose.yaw);
+      const pts = [[L * 0.65, 0], [-L * 0.35, Wd / 2], [-L * 0.35, -Wd / 2]].map(([a, b]) => [pose.x + c * a - sn * b, pose.y + sn * a + c * b]);
+      ctx.shadowColor = "rgba(245,197,24,0.75)"; ctx.shadowBlur = 14 * dpr;
+      ctx.fillStyle = "#f5c518"; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0;
+      if (s * L < 12) { ctx.beginPath(); ctx.arc(X(pose.x), Y(pose.y), 5 * dpr, 0, Math.PI * 2); ctx.fill(); }
+      if (fresh("/drive")) { const d = T["/drive"].data; const a = pose.yaw + d.steer; const len = Math.max(0.25, Math.min(1.2, Math.abs(d.speed) * 0.3));
+        ctx.strokeStyle = "#f5c518aa"; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(X(pose.x), Y(pose.y)); ctx.lineTo(X(pose.x + Math.cos(a) * len), Y(pose.y + Math.sin(a) * len)); ctx.stroke(); }
+    } else {
+      ctx.fillStyle = "#6c7589"; ctx.font = `${13 * dpr}px Inter, sans-serif`; ctx.textAlign = "center";
+      ctx.fillText(S.relay === "live" ? "waiting for /odom or /feb/pose" : String(S.relay), W / 2, H / 2);
+    }
+    // scale bar
+    const m = view.s > 60 ? 1 : view.s > 12 ? 5 : 10;
+    el("scale").innerHTML = `${m} m<div style="width:${m * view.s}px"></div>`;
+  }
+
+  window.__dash = { S, view, walls, layers, META: () => META };   // for debugging from the console
+  let lastSide = 0;
+  function loop() {
+    draw();
+    const t = now();
+    if (t - lastSide > 0.25) { lastSide = t; renderBanner(); renderSide(); }
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+</body>
+</html>
