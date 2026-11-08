@@ -228,6 +228,11 @@ class Racer(Node):
             self.ctl.reset()
             self.integral, self.throttle, self.v_cmd = 0.0, 0.0, 0.0
             self.stalled_since, self.push_until = None, None
+            if self.halted and self.mode == "MAPPING":
+                # a halt on the mapping lap (blind, stuck) is not final on the real car: the button was
+                # released, the car was carried back, the button is held again, so the lap goes on
+                self.halted, self.recovering = False, False
+                self.get_logger().info("autonomous: the earlier stop is cleared, mapping goes on")
             self.get_logger().info("autonomous: control starts clean (map and position kept)")
         elif self.live and not live:
             self.get_logger().info("not driving: %s" % msg.data)
@@ -251,6 +256,12 @@ class Racer(Node):
         self.last_t = t
         if self.yaw is None:
             return
+        if not self.live or self.last_seen_t == 0.0:
+            # the blind watchdog counts only while the car is ours to drive: before the first scan, and
+            # while the supervisor holds it in IDLE or MANUAL, "time since cones" is not a fault. On the
+            # car the clock is the wall clock, so a zero start read as 1.8e9 s blind and halted at boot.
+            self.last_seen_t = t
+            self.seen_pose = self.pose.copy()
         clusters = self.perception.clusters(msg)
         self.clusters_now, self.last_dt = clusters, dt
         cones = self.perception.fuse(clusters, self.speed, self.yaw, dt, self.yaw_rate)
