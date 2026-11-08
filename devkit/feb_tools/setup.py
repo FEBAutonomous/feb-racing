@@ -26,5 +26,6 @@ setup(
                                       "key_joy = feb_tools.key_joy:main",
                                       "scan_rotate = feb_tools.scan_rotate:main",
                                       "battery = feb_tools.battery:main",
-                                      "pad_watch = feb_tools.pad_watch:main"]},
+                                      "pad_watch = feb_tools.pad_watch:main",
+                                      "imu_relay = feb_tools.imu_relay:main"]},
 )

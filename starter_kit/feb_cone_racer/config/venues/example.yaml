@@ -1,0 +1,14 @@
+# A venue profile: the Tune page writes files like this one. Only what the place changes.
+racer:
+  ros__parameters:
+    hsv_blue: [92, 110, 40, 115, 255, 255]
+    hsv_yellow: [18, 90, 60, 38, 255, 255]
+    hsv_orange: [0, 100, 60, 15, 255, 255]
+    min_blob_px: 60
+    band_top: 0.58
+    band_bottom: 0.92
+    band_floor: 0.50
+    camera_auto_exposure: true     # false + camera_exposure (RealSense units, ~1/10 ms) holds the brightness
+    camera_exposure: 0
+    camera_auto_wb: true           # false + camera_white_balance (K) holds the colours
+    camera_white_balance: 0

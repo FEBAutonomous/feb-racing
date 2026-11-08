@@ -35,6 +35,7 @@ def generate_launch_description():
         Node(package="joy", executable="joy_node", name="joy", parameters=[cfg], respawn=True, respawn_delay=1.0),
         Node(package="feb_tools", executable="pad_watch", name="pad_watch", parameters=[cfg], output="screen"),   # restarts joy_node when the pad comes back from sleep
         Node(package="feb_tools", executable="battery", name="battery", parameters=[cfg], output="screen"),   # /feb/battery from the VESC's voltage
+        Node(package="feb_tools", executable="imu_relay", name="imu_relay", output="screen"),   # /sensors/imu/raw (the VESC's IMU) -> /imu, the contract's topic
         Node(package="tf2_ros", executable="static_transform_publisher", name="static_baselink_to_laser",
              arguments=["0.27", "0.0", "0.11", "0.0", "0.0", "0.0", "base_link", "laser"]),
     ])

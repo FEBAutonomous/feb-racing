@@ -13,6 +13,7 @@ setup(
         ("share/" + package_name, ["package.xml", "card.yaml"]),
         (os.path.join("share", package_name, "launch"), glob("launch/*.py")),
         (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+        (os.path.join("share", package_name, "config", "venues"), glob("config/venues/*.yaml")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

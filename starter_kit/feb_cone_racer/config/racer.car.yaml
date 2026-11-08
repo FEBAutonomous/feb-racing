@@ -17,4 +17,5 @@ racer:
     min_blob_px: 60
     orange_min_px: 120
     max_range: 4.0            # outdoor clutter at range is not cones
-    side_guess_range: 0.0     # a cone the camera gave no colour is ignored, never guessed
+    side_guess_range: 2.0     # a near cone the camera gave no colour takes the side it sits on (as in the sim);
+                              # 0.0 ignored such cones, which left holes whenever the colour missed indoors (2026-11-08)

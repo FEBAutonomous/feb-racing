@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FEB Auto dash · Tune</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #090b10; --bg-2: #0e1118; --panel: #12161f; --panel-2: #171c27; --panel-3: #1d2330; --line: #222838; --ink: #e8ebf2; --ink-2: #aab2c5; --ink-3: #6c7589;
+          --accent: #f5c518; --accent-2: #4f8cff; --good: #3ddc84; --warn: #ff9f43; --bad: #ff5c5c; --mono: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 Inter, system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #11151f 0%, var(--bg-2) 45%, #0c0f16 100%); flex-wrap: wrap; }
+  .brand { font-weight: 800; letter-spacing: .1em; font-size: 15px; display: flex; align-items: center; gap: 10px; } .brand i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); display: inline-block; }
+  .brand em { font-style: normal; color: var(--accent); } .brand small { font-weight: 500; color: var(--ink-3); font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase; }
+  .chip { padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-2); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .steps { margin-left: auto; color: var(--ink-3); font-size: 12.5px; max-width: 640px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; padding: 12px 16px 16px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .panel h3 { margin: 0; padding: 9px 14px; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: center; background: linear-gradient(180deg, var(--panel-2), var(--panel)); }
+  .panel h3 .right { margin-left: auto; font-family: var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink-2); }
+  .stage { position: relative; } canvas#view { width: 100%; display: block; background: #000; } canvas#hud { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+  .stats { padding: 8px 14px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); border-top: 1px solid var(--line); display: flex; gap: 18px; flex-wrap: wrap; }
+  .stats b { color: var(--ink); }
+  .side { display: flex; flex-direction: column; gap: 12px; }
+  .grp { padding: 8px 14px 10px; border-bottom: 1px solid var(--line); }
+  .grp:last-child { border-bottom: 0; }
+  .grp .t { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .grp .t i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .row { display: grid; grid-template-columns: 84px 1fr 52px; gap: 8px; align-items: center; font-size: 12px; color: var(--ink-2); margin: 2px 0; }
+  .row input[type=range] { width: 100%; accent-color: var(--accent); height: 18px; }
+  .row .v { font-family: var(--mono); text-align: right; color: var(--ink); font-size: 12px; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+  button, .btn { font: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-3); color: var(--ink); cursor: pointer; }
+  button.gold { background: var(--accent); color: #15110a; border-color: transparent; }
+  input[type=text], input[type=number], textarea { font: inherit; font-size: 12.5px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); }
+  input[type=number] { width: 84px; font-family: var(--mono); }
+  textarea { width: 100%; min-height: 150px; font-family: var(--mono); font-size: 11.5px; resize: vertical; }
+  .msg { font-size: 12px; color: var(--ink-3); margin-top: 6px; min-height: 16px; word-break: break-all; }
+  .msg.ok { color: var(--good); } .msg.bad { color: var(--bad); }
+  label.ck { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><i></i>FEB <em>Auto</em> <small>dash · tune</small></div>
+  <a class="chip" href="/">← dash</a>
+  <div class="steps">Put a <b>blue</b> and a <b>yellow</b> cone about two metres ahead, half a metre left and right. Drag until each cone fills with its own colour and nothing else does, lock the camera, then save as this venue's name.</div>
+</header>
+<main>
+  <section class="panel">
+    <h3>Camera <span class="right" id="frameinfo">waiting for a frame…</span></h3>
+    <div class="stage"><canvas id="view" width="640" height="480"></canvas><canvas id="hud"></canvas></div>
+    <div class="stats" id="stats"></div>
+  </section>
+  <aside class="side">
+    <section class="panel"><h3>Colour ranges <span class="right">H 0–180 · S,V 0–255</span></h3><div id="colours"></div></section>
+    <section class="panel"><h3>Image band and blobs</h3><div id="band"></div></section>
+    <section class="panel"><h3>Camera vs lidar</h3><div id="geom"></div></section>
+    <section class="panel"><h3>Camera lock</h3>
+      <div class="grp">
+        <div class="btns"><label class="ck"><input type="checkbox" id="ae" checked> auto exposure</label><input type="number" id="exp" value="100" min="1" max="10000" title="exposure, RealSense units (~1/10 ms)"></div>
+        <div class="btns"><label class="ck"><input type="checkbox" id="awb" checked> auto white balance</label><input type="number" id="wb" value="4600" min="2800" max="6500" step="100" title="white balance, K"></div>
+        <div class="btns"><button id="applycam">Apply to camera now</button><span class="msg" id="cammsg"></span></div>
+        <div class="msg">Indoors: untick both, set white balance to the room's light (LEDs often 4000–5000 K), raise exposure until the cones are clearly lit without the floor blowing out. The profile saves these and the racer applies them at start.</div>
+      </div>
+    </section>
+    <section class="panel"><h3>Venue profile <span class="right" id="venuedir"></span></h3>
+      <div class="grp">
+        <div class="btns"><input type="text" id="vname" placeholder="venue name, e.g. apartment, rfs, michigan" style="flex:1"><button class="gold" id="save">Save</button></div>
+        <div class="msg" id="savemsg"></div>
+        <textarea id="yaml" spellcheck="false"></textarea>
+        <div class="btns"><button id="load">Load this YAML into the sliders</button><button id="reset">Reset to the car's defaults</button></div>
+        <div class="msg">Then: <code>./feb up --car --driver feb_cone_racer --mode-name inspection --profile NAME</code>. Commit the file so the team has it.</div>
+      </div>
+    </section>
+  </aside>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const DEFAULTS = {   // the car's current numbers (config/racer.car.yaml), the starting point everywhere
+    hsv_blue: [92, 110, 40, 115, 255, 255], hsv_yellow: [18, 90, 60, 38, 255, 255], hsv_orange: [0, 100, 60, 15, 255, 255],
+    band_top: 0.58, band_bottom: 0.92, band_floor: 0.50, min_blob_px: 60, orange_min_px: 120, blob_min_value: 25,
+    camera_hfov_deg: 55.6, camera_ahead: 0.20, camera_lateral: 0.02, camera_col_bias: 0.0,
+    max_range: 4.0, cluster_gap: 0.15, cone_max_width: 0.35, cone_max_points: 80, match_px_frac: 0.04,
+  };
+  const P = JSON.parse(JSON.stringify(DEFAULTS));
+  const COL = { blue: "#4f8cff", yellow: "#f5c518", orange: "#ff8a3d" };
+  const RGB = { blue: [79, 140, 255], yellow: [245, 197, 24], orange: [255, 138, 61] };
+  let frame = null, frameW = 640, frameH = 480, scan = null, META = {};
+
+  // ---- controls
+  function slider(parent, key, idx, label, min, max, step) {
+    const row = document.createElement("div"); row.className = "row";
+    const get = () => idx === null ? P[key] : P[key][idx], set = v => { if (idx === null) P[key] = v; else P[key][idx] = v; };
+    row.innerHTML = `<span>${label}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${get()}"><span class="v">${get()}</span>`;
+    const inp = row.querySelector("input"), out = row.querySelector(".v");
+    inp.oninput = () => { set(step < 1 ? parseFloat(inp.value) : parseInt(inp.value, 10)); out.textContent = inp.value; schedule(); };
+    row.refresh = () => { inp.value = get(); out.textContent = get(); };
+    parent.appendChild(row); rows.push(row);
+  }
+  const rows = [];
+  function group(parent, title, colour) { const g = document.createElement("div"); g.className = "grp"; g.innerHTML = `<div class="t">${colour ? `<i style="background:${colour}"></i>` : ""}${title}</div>`; parent.appendChild(g); return g; }
+  for (const c of ["blue", "yellow", "orange"]) {
+    const g = group($("colours"), c, COL[c]);
+    [["H min", 0, 0, 180, 1], ["S min", 1, 0, 255, 1], ["V min", 2, 0, 255, 1], ["H max", 3, 0, 180, 1], ["S max", 4, 0, 255, 1], ["V max", 5, 0, 255, 1]].forEach(([l, i, a, b, s]) => slider(g, "hsv_" + c, i, l, a, b, s));
+  }
+  { const g = group($("band"), "rows that count (fraction of the height)");
+    slider(g, "band_top", null, "band top", 0, 1, 0.01); slider(g, "band_bottom", null, "band bottom", 0, 1, 0.01); slider(g, "band_floor", null, "floor line", 0, 1, 0.01);
+    const g2 = group($("band"), "blobs");
+    slider(g2, "min_blob_px", null, "min area px", 1, 600, 1); slider(g2, "orange_min_px", null, "orange min px", 1, 1000, 1); slider(g2, "blob_min_value", null, "min brightness", 0, 255, 1); }
+  { const g = group($("geom"), "where a lidar point lands in the image");
+    slider(g, "camera_hfov_deg", null, "hfov °", 30, 100, 0.1); slider(g, "camera_ahead", null, "ahead m", -1, 1, 0.01); slider(g, "camera_lateral", null, "lateral m", -0.3, 0.3, 0.005); slider(g, "camera_col_bias", null, "col bias px", -40, 40, 0.5);
+    const g2 = group($("geom"), "lidar cones");
+    slider(g2, "max_range", null, "max range m", 1, 8, 0.1); slider(g2, "cluster_gap", null, "cluster gap m", 0.05, 0.4, 0.01); slider(g2, "cone_max_width", null, "max width m", 0.1, 0.8, 0.01); slider(g2, "match_px_frac", null, "match tol", 0.01, 0.15, 0.005); }
+
+  // ---- stream
+  const es = new EventSource("/events");
+  es.addEventListener("state", e => { const m = JSON.parse(e.data); META = m.meta || {}; $("venuedir").textContent = META.venues ? META.venues.replace(/^.*\/FEB\//, "FEB/") : "no venues folder (start with --driver)"; take(m.state.topics || {}); });
+  es.addEventListener("tick", e => take(JSON.parse(e.data).topics || {}));
+  function take(T) {
+    if (T["/camera/full"] && T["/camera/full"].data && T["/camera/full"].data.jpg) {
+      const d = T["/camera/full"].data; const img = new Image();
+      img.onload = () => { frame = img; frameW = d.w; frameH = d.h; $("frameinfo").textContent = `${d.w}×${d.h} ${d.enc}`; schedule(); };
+      img.src = "data:image/jpeg;base64," + d.jpg;
+    }
+    if (T["/scan_full"] && T["/scan_full"].data) { scan = T["/scan_full"].data; schedule(); }
+  }
+  setInterval(() => { fetch("/cmd?x=frame").catch(() => {}); fetch("/cmd?x=scan").catch(() => {}); }, 700);
+
+  // ---- processing (ports of perception.py: on_image, clusters, pixel_column, assign)
+  const view = $("view"), ctx = view.getContext("2d"), off = document.createElement("canvas"), octx = off.getContext("2d", { willReadFrequently: true });
+  const hud = $("hud"), hctx = hud.getContext("2d");
+  let pending = false;
+  function schedule() { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; redraw(); }); } }
+  function hsvOf(r, g, b) {   // OpenCV's BGR2HSV for 8-bit: H 0..180, S,V 0..255
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0; if (d > 0) { if (mx === r) h = 60 * (g - b) / d; else if (mx === g) h = 120 + 60 * (b - r) / d; else h = 240 + 60 * (r - g) / d; if (h < 0) h += 360; }
+    return [Math.round(h / 2), mx ? Math.round(d * 255 / mx) : 0, mx];
+  }
+  function blobs(mask, W, H, colourName) {
+    const top = Math.floor(P.band_top * H), bottom = Math.floor(P.band_bottom * H), floor = P.band_floor * H;
+    const seen = new Uint8Array(W * H), out = [], stack = [];
+    for (let y = top; y < bottom; y++) for (let x = 0; x < W; x++) {
+      const i0 = y * W + x; if (!mask[i0] || seen[i0]) continue;
+      let n = 0, x0 = x, x1 = x, y0 = y, y1 = y, vsum = 0; stack.push(i0); seen[i0] = 1;
+      while (stack.length) { const i = stack.pop(); const yy = (i / W) | 0, xx = i - yy * W; n++; vsum += vmap[i]; if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+        if (xx > 0 && mask[i - 1] && !seen[i - 1]) { seen[i - 1] = 1; stack.push(i - 1); } if (xx < W - 1 && mask[i + 1] && !seen[i + 1]) { seen[i + 1] = 1; stack.push(i + 1); }
+        if (yy > top && mask[i - W] && !seen[i - W]) { seen[i - W] = 1; stack.push(i - W); } if (yy < bottom - 1 && mask[i + W] && !seen[i + W]) { seen[i + W] = 1; stack.push(i + W); } }
+      if (n < P.min_blob_px || n > 0.02 * W * H) continue;
+      if (y1 + 1 < floor) continue;
+      const dim = vsum / n < P.blob_min_value;
+      const label = colourName === "orange" && n < P.orange_min_px ? "yellow" : colourName;
+      out.push({ label, u: (x0 + x1 + 1) / 2, x0, y0, x1, y1, area: n, dim });
+    }
+    return out;
+  }
+  let vmap = null;
+  function clusters(sc) {
+    const out = [], xs = [], ys = []; let cur = [];
+    const flush = () => { if (!cur.length) return; if (cur.length <= P.cone_max_points) { let mnx = 1e9, mxx = -1e9, mny = 1e9, mxy = -1e9, sx = 0, sy = 0; for (const i of cur) { sx += xs[i]; sy += ys[i]; mnx = Math.min(mnx, xs[i]); mxx = Math.max(mxx, xs[i]); mny = Math.min(mny, ys[i]); mxy = Math.max(mxy, ys[i]); }
+      if (Math.hypot(mxx - mnx, mxy - mny) <= P.cone_max_width) out.push([sx / cur.length, sy / cur.length]); } cur = []; };
+    let last = -1;
+    for (let i = 0; i < sc.r.length; i++) { const r = sc.r[i]; if (r === null || !(r > 0.3) || !(r < P.max_range)) continue; const a = sc.amin + i * sc.ainc; xs[i] = r * Math.cos(a); ys[i] = r * Math.sin(a);
+      if (last >= 0 && Math.hypot(xs[i] - xs[last], ys[i] - ys[last]) > P.cluster_gap) flush(); cur.push(i); last = i; }
+    flush(); return out;
+  }
+  function column(x, y, W) { const fx = (W / 2) / Math.tan(P.camera_hfov_deg * Math.PI / 360); const cx = x - P.camera_ahead, cy = y - P.camera_lateral; if (cx < 0.2) return NaN; return W / 2 - fx * Math.tan(Math.atan2(cy, cx)) + P.camera_col_bias; }
+
+  function redraw() {
+    const W = frameW, H = frameH; view.width = W; view.height = H; off.width = W; off.height = H;
+    if (frame) octx.drawImage(frame, 0, 0, W, H); else { octx.fillStyle = "#000"; octx.fillRect(0, 0, W, H); }
+    ctx.drawImage(off, 0, 0);
+    const data = octx.getImageData(0, 0, W, H).data, N = W * H;
+    vmap = new Uint8Array(N);
+    const masks = { blue: new Uint8Array(N), yellow: new Uint8Array(N), orange: new Uint8Array(N) };
+    const top = Math.floor(P.band_top * H), bottom = Math.floor(P.band_bottom * H);
+    const overlay = ctx.createImageData(W, H), od = overlay.data;
+    for (let i = 0; i < N; i++) {
+      const [h, s, v] = hsvOf(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]); vmap[i] = v;
+      const y = (i / W) | 0; if (y < top || y >= bottom) continue;
+      for (const c of ["blue", "yellow", "orange"]) { const b = P["hsv_" + c]; if (h >= b[0] && h <= b[3] && s >= b[1] && s <= b[4] && v >= b[2] && v <= b[5]) { masks[c][i] = 1; const rgb = RGB[c]; od[i * 4] = rgb[0]; od[i * 4 + 1] = rgb[1]; od[i * 4 + 2] = rgb[2]; od[i * 4 + 3] = 150; } }
+    }
+    const tmp = document.createElement("canvas"); tmp.width = W; tmp.height = H; tmp.getContext("2d").putImageData(overlay, 0, 0); ctx.drawImage(tmp, 0, 0);
+    // everything drawn with lines and text goes on the hud, at screen resolution, so it reads the same for any frame size
+    const rect = view.getBoundingClientRect(), dpr = devicePixelRatio || 1; hud.width = Math.round(rect.width * dpr); hud.height = Math.round(rect.height * dpr);
+    const sx = hud.width / W, sy = hud.height / H, X = x => x * sx, Y = y => y * sy, c2 = hctx; c2.clearRect(0, 0, hud.width, hud.height);
+    const font = (px, bold) => `${bold ? "bold " : ""}${Math.round(px * dpr)}px ${bold ? "JetBrains Mono" : "Inter"}`;
+    // band lines
+    c2.setLineDash([6 * dpr, 6 * dpr]); c2.lineWidth = 1.5 * dpr;
+    for (const [k, col] of [["band_top", "#aab2c5"], ["band_bottom", "#aab2c5"], ["band_floor", "#ff9f43"]]) { const y = Y(P[k] * H); c2.strokeStyle = col; c2.beginPath(); c2.moveTo(0, y); c2.lineTo(hud.width, y); c2.stroke(); c2.fillStyle = col; c2.font = font(11); c2.fillText(k.replace("band_", ""), 6 * dpr, y - 4 * dpr); }
+    c2.setLineDash([]);
+    // blobs
+    let all = []; for (const c of ["blue", "yellow", "orange"]) all = all.concat(blobs(masks[c], W, H, c));
+    for (const b of all) { c2.strokeStyle = COL[b.label]; c2.lineWidth = 2 * dpr; if (b.dim) c2.setLineDash([3 * dpr, 3 * dpr]); c2.strokeRect(X(b.x0), Y(b.y0), X(b.x1 - b.x0 + 1), Y(b.y1 - b.y0 + 1)); c2.setLineDash([]); c2.fillStyle = COL[b.label]; c2.font = font(11, true); c2.fillText(b.area + (b.dim ? " dim" : ""), X(b.x0), Y(b.y0) - 3 * dpr); }
+    // lidar cones -> columns, coloured by the nearest blob within tolerance (one blob per cone, closest first)
+    let cl = scan ? clusters(scan) : [], matched = 0;
+    const cols = cl.map(([x, y]) => column(x, y, W)); const tol = P.match_px_frac * W; const taken = new Set(), done = new Set(), pairs = [];
+    cl.forEach((c, i) => { if (isNaN(cols[i])) return; all.forEach((b, k) => { const d = Math.abs(b.u - cols[i]); if (d < tol) pairs.push([d, i, k]); }); });
+    pairs.sort((a, b) => a[0] - b[0]); const colour = {};
+    for (const [d, i, k] of pairs) { if (done.has(i) || taken.has(k)) continue; done.add(i); taken.add(k); colour[i] = all[k].label; matched++; }
+    cl.forEach((c, i) => { const u = cols[i]; if (isNaN(u) || u < 0 || u > W) return; const col = colour[i] ? COL[colour[i]] : "#8a93a8"; c2.strokeStyle = col; c2.lineWidth = 3 * dpr; c2.beginPath(); c2.moveTo(X(u), Y(top)); c2.lineTo(X(u), Y(bottom)); c2.stroke();
+      c2.fillStyle = col; c2.font = font(11, true); c2.fillText(Math.hypot(c[0], c[1]).toFixed(2) + " m", X(u) + 4 * dpr, Y(bottom) + 14 * dpr); });
+    const count = l => all.filter(b => b.label === l).length;
+    $("stats").innerHTML = `<span>lidar cones <b>${cl.length}</b></span><span>in image <b>${cols.filter(u => !isNaN(u) && u >= 0 && u <= W).length}</b></span><span>blobs <b style="color:${COL.blue}">${count("blue")}</b> / <b style="color:${COL.yellow}">${count("yellow")}</b> / <b style="color:${COL.orange}">${count("orange")}</b></span><span>coloured cones <b>${matched}</b></span>${frame ? "" : "<span>no frame yet: is the camera publishing?</span>"}`;
+    $("yaml").value = toYaml();
+  }
+
+  // ---- yaml
+  function toYaml() {
+    const f = v => Array.isArray(v) ? "[" + v.join(", ") + "]" : typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/0+$/, "").replace(/\.$/, ".0")) : String(v);
+    const keys = ["hsv_blue", "hsv_yellow", "hsv_orange", "band_top", "band_bottom", "band_floor", "min_blob_px", "orange_min_px", "blob_min_value", "camera_hfov_deg", "camera_ahead", "camera_lateral", "camera_col_bias", "max_range", "cluster_gap", "cone_max_width", "match_px_frac"];
+    const lines = keys.map(k => `    ${k}: ${f(P[k])}`);
+    lines.push(`    camera_auto_exposure: ${$("ae").checked}`, `    camera_exposure: ${$("ae").checked ? 0 : parseInt($("exp").value || 0, 10)}`, `    camera_auto_wb: ${$("awb").checked}`, `    camera_white_balance: ${$("awb").checked ? 0 : parseInt($("wb").value || 0, 10)}`);
+    return `# venue profile written by the dash Tune page on ${new Date().toISOString().slice(0, 16).replace("T", " ")}${META.host ? " from " + META.host : ""}\nracer:\n  ros__parameters:\n${lines.join("\n")}\n`;
+  }
+  function fromYaml(text) {
+    for (const m of text.matchAll(/^\s*([a-z_]+):\s*(\[[^\]]*\]|[-\d.]+|true|false)\s*(#.*)?$/gm)) {
+      const k = m[1], v = m[2];
+      if (k in P) P[k] = v.startsWith("[") ? v.slice(1, -1).split(",").map(x => parseFloat(x)) : parseFloat(v);
+      else if (k === "camera_auto_exposure") $("ae").checked = v === "true"; else if (k === "camera_exposure") { if (parseInt(v) > 0) $("exp").value = parseInt(v); }
+      else if (k === "camera_auto_wb") $("awb").checked = v === "true"; else if (k === "camera_white_balance") { if (parseInt(v) > 0) $("wb").value = parseInt(v); }
+    }
+    rows.forEach(r => r.refresh()); schedule();
+  }
+  $("load").onclick = () => fromYaml($("yaml").value);
+  $("reset").onclick = () => { Object.assign(P, JSON.parse(JSON.stringify(DEFAULTS))); $("ae").checked = $("awb").checked = true; rows.forEach(r => r.refresh()); schedule(); };
+  for (const id of ["ae", "awb", "exp", "wb"]) $(id).onchange = schedule;
+  $("applycam").onclick = async () => {
+    $("cammsg").textContent = "setting…"; $("cammsg").className = "msg";
+    try { const r = await (await fetch("/camera", { method: "POST", body: JSON.stringify({ auto_exposure: $("ae").checked, exposure: parseInt($("exp").value || 0, 10), auto_wb: $("awb").checked, white_balance: parseInt($("wb").value || 0, 10) }) })).json();
+      $("cammsg").textContent = r.ok ? "camera set" : (r.error || (r.set || []).map(s => s.param.replace("rgb_camera.", "") + ": " + s.result).join(" · ")); $("cammsg").className = "msg " + (r.ok ? "ok" : "bad"); }
+    catch (e) { $("cammsg").textContent = "dash server unreachable"; $("cammsg").className = "msg bad"; }
+  };
+  $("save").onclick = async () => {
+    const name = $("vname").value.trim(); if (!name) { $("savemsg").textContent = "give the venue a name"; $("savemsg").className = "msg bad"; return; }
+    try { const r = await (await fetch("/save", { method: "POST", body: JSON.stringify({ name, yaml: $("yaml").value }) })).json();
+      $("savemsg").textContent = r.ok ? `saved ${r.path} — launch with --profile ${r.profile}` : r.error; $("savemsg").className = "msg " + (r.ok ? "ok" : "bad"); }
+    catch (e) { $("savemsg").textContent = "dash server unreachable"; $("savemsg").className = "msg bad"; }
+  };
+  redraw();
+})();
+</script>
+</body>
+</html>

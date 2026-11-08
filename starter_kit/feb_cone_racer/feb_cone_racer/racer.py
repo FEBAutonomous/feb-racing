@@ -29,6 +29,7 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, Imu, LaserScan
 from std_msgs.msg import Float32, String
 
+from .camera_lock import CameraLock
 from .controller import RaceController, wrap
 from .graphslam import GraphSLAM
 from .params import RACE
@@ -61,6 +62,8 @@ DEFAULTS = dict(
     camera_ahead=-0.66, camera_lateral=-0.033, camera_col_bias=-1.0, camera_lag_s=0.073,   # camera vs lidar, fitted on this car
     hsv_blue=[105, 220, 8, 135, 255, 255], hsv_yellow=[18, 150, 8, 40, 255, 255], hsv_orange=[0, 150, 15, 15, 255, 255],
     band_top=0.20, band_bottom=0.36, band_floor=0.21, orange_min_px=35, blob_min_value=25,
+    # the camera itself (a venue profile may fix exposure and white balance; see camera_lock.py)
+    camera_auto_exposure=True, camera_exposure=0, camera_auto_wb=True, camera_white_balance=0,
     # lap-1 follower
     map_speed=1.2, map_min_speed=0.8, lookahead=1.0, follow_range=3.5, throttle_start=0.07, chain_step=1.8, avoid_range=0.9, local_path_lookahead=1.4, local_path_min_reach=2.0, rung_max_age=1.0,
     speed_per_throttle=24.95, speed_tau=0.8, throttle_kp=0.02, throttle_ki=0.03, throttle_slew=0.8, speed_window=0.25, steer_tau=0.15,
@@ -96,6 +99,9 @@ class Racer(Node):
         self.p = {k: self.get_parameter(k).value for k in DEFAULTS}
         p = self.p
         self.perception = Perception(p)
+        self.camera_lock = CameraLock(self, p)
+        if not self.camera_lock.done:
+            self.lock_timer = self.create_timer(1.0, lambda: self.camera_lock.apply() and self.lock_timer.cancel())
         self.slam = GraphSLAM((0.0, 0.0), p["dx_weight"], p["z_weight"], p["new_landmark_dist"], p["icp_gate"],
                               icp_min_matches=int(p["icp_min_matches"]))
         try:

@@ -252,6 +252,42 @@ dash:
   car_length: 0.5              # metres, how big the car is drawn
 ```
 
+## Venue profiles
+
+Lighting changes with the place, so a camera driver's colour ranges do too. A venue profile is a
+small parameter file applied on top of the driver's config: `config/venues/NAME.yaml` in the
+driver's package, chosen with `--profile NAME`. The cone racer's holds the HSV ranges, the image
+band, the camera lock (fixed exposure and white balance) and nothing else. Make one on the dash's
+Tune page (below) rather than by hand, commit it, and the next person at that venue just passes
+the name.
+
+A driver takes profiles when its launch file declares a `profile` argument and reads
+`config/venues/<profile>.yaml`; `feb up --profile` checks for that and says so otherwise. The cone
+racer does; copy its `race.launch.py` pattern into your own.
+
+## Calibrating at a new venue
+
+Ten minutes, once per place, with the car on the floor and `feb up --car` running:
+
+1. Put a blue cone and a yellow cone about two metres ahead of the car, half a metre to the left
+   and right. A hand's width from any wall.
+2. Open `http://feb-car:8780/tune` on a laptop. It shows the camera with the colour masks drawn
+   over it, the lidar cones as vertical lines where the camera should see them, and the counts.
+3. Camera lock: untick auto exposure and auto white balance, set the white balance to the room's
+   light (LEDs are usually 4000 to 5000 K, daylight 5500 to 6500), raise the exposure until the
+   cones are clearly lit, press "Apply to camera now". Colours stop drifting from frame to frame.
+4. Drag the colour sliders until each cone is filled with its own colour and nothing else in the
+   band is (floor, walls, shoes). Blue is the one that moves most between indoors and outdoors.
+   Raise "min area" until stray specks vanish.
+5. Check the lidar lines land on the cones. If they sit beside them, adjust the camera geometry
+   sliders (field of view first, then lateral); the counts at the bottom should read two cones,
+   two coloured.
+6. Save with the venue's name. The file lands in the driver's `config/venues/`; commit it.
+7. Restart with `./feb up --car --driver feb_cone_racer --mode-name inspection --profile NAME`.
+
+For the geometry numbers there is also the bag fit, `ros2 run feb_cone_racer calibrate_camera <bag>`,
+which fits them from a slow lap past cones; the Tune page is the quick check and the colour tune.
+
 ## Getting a driver onto the car
 
 Team drivers live in `FEBAutonomous/feb-stack`, one folder per person under `drivers/`. Nobody
@@ -273,7 +309,8 @@ edits it by hand; `feb submit` fills it. The path from your laptop to the wheels
 4. On the Jetson, which has `feb-stack` cloned beside `feb-racing`:
    ```
    cd ~/FEB/feb-stack && git pull
-   cd ~/FEB/feb-racing && ./feb up --car --driver my_driver --mode-name inspection
+   cd ~/FEB/feb-racing && git pull
+   ./feb up --car --no-foxglove --driver my_driver --mode-name inspection
    ```
    On the car the workspace is `feb-stack` by default, so every merged driver is built and the
    named one launches: the VESC, lidar and gamepad drivers, the supervisor with the dead-man and
@@ -293,6 +330,23 @@ Nothing is flashed or copied by hand. The Jetson is a box with a `git pull`: the
 for arm64 by the same CI, created by `./feb setup` with the car's USB devices passed in (it
 notices it is on the car by the `/dev/sensors` udev names from the RoboRacer guide). Wiring and
 the one-time Jetson setup are in `docs/build-car.md`.
+
+## The car, start to finish
+
+```
+ssh feb@feb-car                      # tailnet; feb@feb-car.local on the same Wi-Fi; 10.42.0.1 on its hotspot
+cd ~/FEB/feb-racing && git pull      # the devkit and the starter kit; ~/FEB/feb-stack for the team's drivers
+./feb up --car --no-foxglove --driver feb_cone_racer --mode-name inspection [--profile NAME]
+```
+Then `http://feb-car:8780` on any laptop for the dash, `/tune` for the calibration page. The pad:
+hold **RB** for autonomous, **LB** for manual, **Back** stops. Nothing moves while no button is
+held. Ctrl-C ends the run; `./feb stop` from any terminal ends one whose terminal is gone, and
+also clears the dash server and the car helpers. `./feb logs` has everything the nodes printed.
+
+The contract on the car: `/scan` from the RPLidar (nose at zero), `/odom` from the VESC, `/imu`
+from the VESC's own IMU (the D435 has none; `imu_relay` republishes `/sensors/imu/raw`), the camera
+on `/camera/color/image_raw`, `/feb/battery` from the VESC's voltage. Until the devkit image carries
+`imu_relay`, `feb up --car` runs it from this clone, so a pull is enough.
 
 ## Ports and overrides
 

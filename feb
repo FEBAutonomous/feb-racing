@@ -333,6 +333,8 @@ def cmd_stop(_=None):
         docker("exec", BOX, "feb-up", "--stop")
         docker("exec", BOX, "bash", "-c", "pkill -f feb_tools/key_joy 2>/dev/null; true")   # a dead-man terminal closed without Q
         docker("exec", BOX, "pkill", "-f", "feb_dash/relay.py")                           # the dash relay, if its feb up died without cleaning up
+        docker("exec", BOX, "pkill", "-f", "feb_tools/imu_relay.py")                      # the car's IMU helper (see car_helpers)
+    kill_dash()
     kill_sim()
     print("stopped")
 
@@ -518,7 +520,11 @@ def driver_ws(args):
     and the starter kit that holds a card with that name. Sets args.ws so the build uses the same one."""
     if args.ws:
         return pathlib.Path(args.ws)
-    for ws in (default_ws(), ROOT / "starter_kit"):
+    seen = []
+    for ws in (default_ws(), STACK, ROOT / "starter_kit"):      # the car's feb-stack first, then this clone's stack/, then the kit
+        if ws in seen or not ws.is_dir():
+            continue
+        seen.append(ws)
         if any(m.get("name") == args.driver for m in (load_yaml(c) or {} for c in cards(ws)) if m):
             args.ws = str(ws)
             return ws
@@ -537,6 +543,11 @@ def driver_command(args):
     launch = m.get("launch", "drive.launch.py")
     extra = " ".join(f"{k}:={v}" for k, v in (m.get("args") or {}).items())
     stack = f"ros2 launch {args.driver} {launch} mode:={mode} {extra}".strip()
+    if getattr(args, "profile", None):
+        launch_files = list(folder.glob("launch/" + launch))
+        if not launch_files or "profile" not in launch_files[0].read_text():
+            fail(f"driver {args.driver} does not take a profile (its {launch} declares no 'profile' argument); see docs/devkit.md, Venue profiles")
+        stack += f" profile:={args.profile}"
     print(f"driver {args.driver} ({manifest.get('kind', 'any')}), mode {mode}: {stack}")
     args.adapter = ",".join(f"{k}={v}" for k, v in (manifest.get("adapter") or {}).items())   # sim adapter settings the driver asks for
     args.dash_card = manifest.get("dash") or {}         # optional: title, note, tiles, car_length for feb dash
@@ -557,6 +568,8 @@ def cmd_up(args):
     if exe is None and not args.no_sim:
         fail("simulator app not found; run `feb setup` or set FEB_SIM_APP")
     ensure_box()
+    if docker("exec", BOX, "bash", "-c", "[ -f /tmp/feb-up.pid ] && kill -0 $(cat /tmp/feb-up.pid) 2>/dev/null").returncode == 0:
+        fail("feb up is already running in the box (a terminal from before); `./feb stop` first")
     if not args.no_sim:
         app_update_hint()
     ws = in_box(args.ws) if args.ws else in_box(default_ws())
@@ -579,7 +592,9 @@ def cmd_up(args):
     print(f"starting the house nodes in {BOX} (workspace {ws}) ...")
     house = subprocess.Popen(up)
     sim_proc = None
-    dash_proc = None if args.no_dash else start_dash(dash_meta(args, track))
+    dash_proc = None if args.no_dash else start_dash(dash_meta(args, track), venues=profile_dir(args))
+    if args.car:
+        car_helpers()
     try:
         if not args.no_sim and not args.car:
             deadline = time.time() + 900                 # a first C++ build on a slow laptop takes that long
@@ -610,6 +625,7 @@ def cmd_up(args):
         if dash_proc and dash_proc.poll() is None:
             dash_proc.terminate()
         docker("exec", BOX, "feb-up", "--stop")
+        docker("exec", BOX, "pkill", "-f", "feb_tools/imu_relay.py")
         docker("rm", "-f", OPPONENT, PROXY)
         try:
             house.wait(15)
@@ -758,28 +774,91 @@ def dash_addresses():
     return out
 
 
-def start_dash(meta, port=None):
+def start_dash(meta, port=None, venues=None):
     """Serve the dash from this machine: a small server here, the relay inside the box over
     `docker exec -i`. Nothing about the box changes (no new port, no new image). Never fatal:
-    when the port is taken or the server cannot start, feb up carries on without it."""
+    when the port is taken by something else or the server cannot start, feb up carries on without it.
+    A dash server left behind by an earlier feb (its pid file) is ended first."""
     port = port or DASH_PORT
     if not (DASH_DIR / "server.py").exists():
         return None
-    import socket
-    with socket.socket() as s:
-        if s.connect_ex(("127.0.0.1", port)) == 0:
-            print(f"feb dash: port {port} is taken (another feb up, or set FEB_DASH_PORT); no dash this run")
-            return None
+    def taken():
+        with socket.socket() as s:
+            return s.connect_ex(("127.0.0.1", port)) == 0
+    if taken() and kill_dash():
+        print("feb dash: ended a dash server left behind by an earlier feb")
+        time.sleep(0.5)
+    if taken():
+        print(f"feb dash: port {port} is taken (another feb up, or set FEB_DASH_PORT); no dash this run")
+        return None
     cmd = [sys.executable, str(DASH_DIR / "server.py"), "--port", str(port), "--box", BOX,
            "--relay", f"{ROOT_IN}/devkit/feb_dash/relay.py", "--meta", json.dumps(meta), "--watch-stdin"]
+    if venues is not None:
+        cmd += ["--venues", str(venues)]
     try:
         # stdin is a pipe from this process: if feb ends in any way, the pipe closes and the dash stops with it
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError as e:
         print(f"feb dash: not started ({e})")
         return None
+    try:
+        DASH_PID.parent.mkdir(parents=True, exist_ok=True)
+        DASH_PID.write_text(str(proc.pid))
+    except OSError:
+        pass
     print("FEB Auto dash: " + "   ".join(dash_addresses()))
     return proc
+
+
+def car_helpers():
+    """House nodes the car needs that an older devkit image does not launch yet, run from this clone
+    inside the box so a `git pull` is enough: the IMU relay (/sensors/imu/raw -> /imu). Skipped when
+    the image's own car launch has it."""
+    has = docker("exec", BOX, "grep", "-q", "imu_relay", "/home/autodrive_devkit/src/feb_tools/launch/car.launch.py").returncode == 0
+    if has:
+        return
+    inner = f"source /opt/ros/humble/setup.bash; exec python3 {ROOT_IN}/devkit/feb_tools/feb_tools/imu_relay.py"
+    docker("exec", "-d", "-u", "feb", BOX, "bash", "-lc", inner)
+    print("car: /imu relayed from the VESC's IMU by this clone (the image's car launch predates imu_relay; `feb update` will carry it)")
+
+
+def profile_dir(args):
+    """The driver's config/venues folder on this machine (where `feb dash` saves a tuned profile), or None."""
+    if not getattr(args, "driver", None) or not getattr(args, "ws", None):
+        return None
+    for card in cards(pathlib.Path(args.ws)):
+        m = load_yaml(card) or {}
+        if m.get("name") == args.driver:
+            return card.parent / "config" / "venues"
+    return None
+
+
+DASH_PID = CONFIG.parent / "dash.pid"
+
+
+def kill_dash():
+    """End a dash server this machine started earlier (its pid file), alive or wedged."""
+    try:
+        pid = int(DASH_PID.read_text().strip())
+    except (OSError, ValueError):
+        return False
+    alive = False
+    try:
+        cmdline = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace") if pathlib.Path("/proc").exists() else "feb_dash/server.py"
+        if "feb_dash/server.py" in cmdline:
+            os.kill(pid, signal.SIGTERM)
+            alive = True
+            for _ in range(20):
+                time.sleep(0.1)
+                os.kill(pid, 0)
+            os.kill(pid, signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        pass
+    try:
+        DASH_PID.unlink()
+    except OSError:
+        pass
+    return alive
 
 
 def cmd_dash(args):
@@ -790,7 +869,11 @@ def cmd_dash(args):
     if args.port:
         DASH_PORT = args.port
     args.dash_card = {}
-    proc = start_dash(dash_meta(args), DASH_PORT)
+    venues = None
+    if getattr(args, "driver", None):
+        driver_ws(args)
+        venues = profile_dir(args)
+    proc = start_dash(dash_meta(args), DASH_PORT, venues=venues)
     if proc is None:
         fail("the dash did not start")
     try:
@@ -1087,6 +1170,7 @@ def main():
     up.add_argument("--opponent", choices=list(OPPONENT_SPEED) + ["map"], help="house racer in car 2: slow | normal | fast (lidar driver) or map")
     up.add_argument("--camera", help="starting camera: \"God's Eye\", Trackcam, \"Driver's Eye\", ...")
     up.add_argument("--no-foxglove", action="store_true", help="do not open Foxglove")
+    up.add_argument("--profile", help="a venue profile from the driver's config/venues/ (indoor lighting, a new site), applied on top of its config; tune one on the dash's Tune page")
     up.add_argument("--no-dash", action="store_true", help=f"do not serve FEB Auto dash (the browser dashboard on port {DASH_PORT})")
     up.add_argument("--look", choices=["visual", "simple"], help="dressed scene or the bare one (default: last choice in the app, else visual)")
     up.add_argument("--fps", type=int, help="render-rate cap (default 60, 0 = uncapped); keeps simulated time at real time")
@@ -1130,6 +1214,8 @@ def main():
     dash = sub.add_parser("dash", help=f"the browser dashboard on its own (feb up serves it already): http://localhost:{DASH_PORT}")
     dash.add_argument("--port", type=int, help=f"default {DASH_PORT}, or FEB_DASH_PORT")
     dash.add_argument("--car", action="store_true", help="label the banner CAR instead of SIM")
+    dash.add_argument("--driver", help="whose config/venues/ the Tune page saves profiles into")
+    dash.add_argument("--ws", help="workspace that holds that driver (default: the usual lookup)")
     dash.set_defaults(func=cmd_dash)
     sub.add_parser("stop", help="end feb up; the box keeps running").set_defaults(func=cmd_stop)
     sub.add_parser("reset", help="remove the box; the next command makes a fresh one").set_defaults(func=cmd_reset)

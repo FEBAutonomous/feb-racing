@@ -190,6 +190,8 @@ class Relay(Node):
         self.sent_at = {}       # topic -> time of the last send (slow topics)
         self.counts = {}        # topic -> [count in the current window, window start, hz]
         self.last = {}          # topic -> last message, serialised lazily for slow topics
+        self.raw = {}           # the latest Image and LaserScan, kept whole for the Tune page's requests
+        self.requests = set()   # "frame" / "scan": one full-resolution copy asked for over stdin
         self.create_timer(2.0, self.discover)
         self.create_timer(TICK, self.tick)
         self.discover()
@@ -215,6 +217,40 @@ class Relay(Node):
         c = self.counts[name]
         c[0] += 1
         self.last[name] = m
+        t = self.types.get(name, "")
+        if t == "sensor_msgs/msg/Image" and name.startswith("/camera"):
+            self.raw["image"] = m
+        elif t == "sensor_msgs/msg/LaserScan" and name == "/scan":
+            self.raw["scan"] = m
+
+    def full_frame(self):
+        """The latest camera image whole, JPEG quality 82, for the Tune page."""
+        import numpy as np, cv2
+        m = self.raw.get("image")
+        if m is None:
+            return None
+        enc = m.encoding.lower()
+        buf = np.frombuffer(bytes(m.data), np.uint8)
+        try:
+            if enc in ("rgb8", "bgr8"):
+                img = buf.reshape(m.height, m.step // 3, 3)[:, : m.width]
+                if enc == "rgb8":
+                    img = img[:, :, ::-1]
+            elif enc in ("mono8", "8uc1"):
+                img = buf.reshape(m.height, m.step)[:, : m.width]
+            else:
+                return None
+        except ValueError:
+            return None
+        ok, jpg = cv2.imencode(".jpg", np.ascontiguousarray(img), [cv2.IMWRITE_JPEG_QUALITY, 82])
+        return {"w": m.width, "h": m.height, "enc": m.encoding, "jpg": base64.b64encode(jpg.tobytes()).decode("ascii")} if ok else None
+
+    def full_scan(self):
+        m = self.raw.get("scan")
+        if m is None:
+            return None
+        r = [None if (math.isinf(v) or math.isnan(v)) else round(float(v), 3) for v in m.ranges]
+        return {"frame": m.header.frame_id, "amin": float(m.angle_min), "ainc": float(m.angle_increment), "rmax": float(m.range_max), "r": r}
 
     def tick(self):
         now = time.monotonic()
@@ -239,6 +275,19 @@ class Relay(Node):
                 else:
                     self.last[name] = m          # keep the newest for the next slow slot
             out[name] = entry
+        if "frame" in self.requests:
+            self.requests.discard("frame")
+            try:
+                f = self.full_frame()
+            except Exception as e:
+                f = {"error": str(e)[:80]}
+            if f is not None:
+                out["/camera/full"] = {"type": "Image", "hz": None, "data": f}
+        if "scan" in self.requests:
+            self.requests.discard("scan")
+            f = self.full_scan()
+            if f is not None:
+                out["/scan_full"] = {"type": "LaserScan", "hz": None, "data": f}
         line = {"t": round(time.time(), 2), "topics": out}
         if int(now * 10) % 20 == 0:   # every 2 s
             line["nodes"] = sorted(n for n in self.get_node_names() if n != "feb_dash_relay" and not n.startswith("_"))
@@ -246,11 +295,14 @@ class Relay(Node):
         sys.stdout.flush()
 
 
-def watch_stdin():
-    """The host closes our stdin when it stops (or dies); then this process has no reader and must go."""
+def watch_stdin(node):
+    """Commands from the host, one per line ("frame", "scan"). The host closes our stdin when it
+    stops (or dies); then this process has no reader and must go."""
     try:
-        while sys.stdin.readline():
-            pass
+        for line in sys.stdin:
+            cmd = line.strip()
+            if cmd in ("frame", "scan"):
+                node.requests.add(cmd)
     except (OSError, ValueError):
         pass
     import os
@@ -261,7 +313,7 @@ def main():
     rclpy.init(args=sys.argv)
     node = Relay()
     import threading
-    threading.Thread(target=watch_stdin, daemon=True).start()
+    threading.Thread(target=watch_stdin, args=(node,), daemon=True).start()
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, BrokenPipeError):

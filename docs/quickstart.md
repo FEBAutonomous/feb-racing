@@ -31,6 +31,7 @@ do steps 2 and 3 above, then copy your old `stack/` contents into the new `stack
 | `./feb up --deadman --driver my_driver` | the same under the car's rules: hold SPACE to drive, M for manual |
 | `./feb up --no-dash ...` | the same without FEB Auto dash (the browser dashboard at <http://localhost:8780>, also reachable from other machines) |
 | `./feb dash` | the dashboard on its own, beside a running stack, a bag, or on the car |
+| `./feb up --car --driver my_driver --mode-name inspection --profile NAME` | on the Jetson: the car, with a venue profile tuned at `http://feb-car:8780/tune` |
 | `./feb stop` | ends that; the box stays |
 | `./feb practice --driver my_driver` | scored runs, competition rules, every practice track of your driver's kind |
 | `./feb practice --driver my_driver --autocross --track loop_cones` | one lap, first sight of the track, for the Autocross board |
