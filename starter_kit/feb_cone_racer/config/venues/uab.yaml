@@ -1,0 +1,17 @@
+# venue profile written by the dash Tune page on 2026-11-08 23:18 from feb-car
+racer:
+  ros__parameters:
+    hsv_blue: [92, 182, 26, 115, 255, 255]
+    hsv_yellow: [25, 164, 60, 38, 255, 255]
+    hsv_orange: [0, 154, 60, 15, 255, 255]
+    band_top: 0.58
+    band_bottom: 0.92
+    band_floor: 0.5
+    min_blob_px: 60
+    orange_min_px: 120
+    blob_min_value: 25
+    max_range: 2.2
+    camera_auto_exposure: true
+    camera_exposure: 0
+    camera_auto_wb: true
+    camera_white_balance: 0
