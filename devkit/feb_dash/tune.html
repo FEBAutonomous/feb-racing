@@ -84,7 +84,7 @@
   const DEFAULTS = {   // the car's current numbers (config/racer.car.yaml), the starting point everywhere
     hsv_blue: [92, 110, 40, 115, 255, 255], hsv_yellow: [18, 90, 60, 38, 255, 255], hsv_orange: [0, 100, 60, 15, 255, 255],
     band_top: 0.58, band_bottom: 0.92, band_floor: 0.50, min_blob_px: 60, orange_min_px: 120, blob_min_value: 25,
-    camera_hfov_deg: 55.6, camera_ahead: 0.20, camera_lateral: 0.02, camera_col_bias: 0.0,
+    camera_hfov_deg: 48.7, camera_ahead: 0.20, camera_lateral: -0.03, camera_col_bias: 43.5,
     max_range: 4.0, cluster_gap: 0.15, cone_max_width: 0.35, cone_max_points: 80, match_px_frac: 0.04,
   };
   const P = JSON.parse(JSON.stringify(DEFAULTS));
@@ -217,7 +217,8 @@
     const fl = v => { let t = Number(v).toFixed(4).replace(/0+$/, ""); if (t.endsWith(".")) t += "0"; return t; };
     const f = (k, v) => Array.isArray(v) ? "[" + v.map(x => Math.round(x)).join(", ") + "]" : INTS.has(k) ? String(Math.round(v)) : fl(v);
     const keys = ["hsv_blue", "hsv_yellow", "hsv_orange", "band_top", "band_bottom", "band_floor", "min_blob_px", "orange_min_px", "blob_min_value", "camera_hfov_deg", "camera_ahead", "camera_lateral", "camera_col_bias", "max_range", "cluster_gap", "cone_max_width", "match_px_frac"];
-    const lines = keys.map(k => `    ${k}: ${f(k, P[k])}`);
+    const GEOM = new Set(["camera_hfov_deg", "camera_ahead", "camera_lateral", "camera_col_bias", "max_range", "cluster_gap", "cone_max_width", "match_px_frac"]);
+    const lines = keys.filter(k => !GEOM.has(k) || JSON.stringify(P[k]) !== JSON.stringify(DEFAULTS[k])).map(k => `    ${k}: ${f(k, P[k])}`);   // camera geometry is the car's, not the venue's: only if changed here
     lines.push(`    camera_auto_exposure: ${$("ae").checked}`, `    camera_exposure: ${$("ae").checked ? 0 : parseInt($("exp").value || 0, 10)}`, `    camera_auto_wb: ${$("awb").checked}`, `    camera_white_balance: ${$("awb").checked ? 0 : parseInt($("wb").value || 0, 10)}`);
     return `# venue profile written by the dash Tune page on ${new Date().toISOString().slice(0, 16).replace("T", " ")}${META.host ? " from " + META.host : ""}\nracer:\n  ros__parameters:\n${lines.join("\n")}\n`;
   }
