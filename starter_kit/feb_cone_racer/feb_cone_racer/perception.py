@@ -55,10 +55,40 @@ class Perception:
                 # lidar cone it hands that cone the wrong colour
                 inside = mask[y:y + bh, x:x + bw] > 0
                 dim = float(np.mean(hsv[y:y + bh, x:x + bw, 2][inside])) < self.p["blob_min_value"]
-                # the start cones are big: a small orange-hued blob is a shaded yellow cone
-                label = YELLOW if colour == ORANGE and area < self.p["orange_min_px"] else colour
-                blobs.append((label, x + bw / 2.0, float(y), float(y + bh), area, dim))   # colour, column, top row, bottom row, area, dim
-        self.blobs = blobs
+                blobs.append([colour, x + bw / 2.0, float(y), float(y + bh), area, dim, float(x), float(x + bw)])
+        blobs = self.merge_stripes(blobs)
+        # the start cones are big: a small orange-hued blob is a shaded yellow cone
+        self.blobs = [(YELLOW if c == ORANGE and area < self.p["orange_min_px"] else c, u, top_, bot, area, dim) for c, u, top_, bot, area, dim, _, _ in blobs]
+
+    @staticmethod
+    def merge_stripes(blobs):
+        """A striped cone is two or three blobs of its colour stacked in the same columns (the white
+        and black bands cut it). One cone must be one blob, or the one-to-one matching hands the
+        pieces of one cone to two lidar cones and the colours shuffle along the row. Blobs of a
+        colour whose column spans overlap, and that are no further apart vertically than the taller
+        of the two, are merged into one (union box, areas summed)."""
+        out = []
+        for colour in sorted({b[0] for b in blobs}):
+            group = sorted((b for b in blobs if b[0] == colour), key=lambda b: b[1])
+            merged = []
+            for b in group:
+                for m in merged:
+                    overlap = min(b[7], m[7]) - max(b[6], m[6])
+                    width = min(b[7] - b[6], m[7] - m[6])
+                    gap = max(b[2], m[2]) - min(b[3], m[3])
+                    tall = max(b[3] - b[2], m[3] - m[2])
+                    if overlap > 0.4 * width and gap < 1.2 * tall:
+                        total = b[4] + m[4]
+                        m[6], m[7] = min(b[6], m[6]), max(b[7], m[7])
+                        m[1] = (m[6] + m[7]) / 2.0
+                        m[2], m[3] = min(b[2], m[2]), max(b[3], m[3])
+                        m[5] = bool(m[5] and b[5])          # dim only if every piece is dim
+                        m[4] = total
+                        break
+                else:
+                    merged.append(list(b))
+            out.extend(merged)
+        return out
 
     # ------------------------------------------------------------ lidar
 

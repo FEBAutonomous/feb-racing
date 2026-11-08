@@ -153,12 +153,22 @@
       if (n < P.min_blob_px || n > 0.02 * W * H) continue;
       if (y1 + 1 < floor) continue;
       const dim = vsum / n < P.blob_min_value;
-      const label = colourName === "orange" && n < P.orange_min_px ? "yellow" : colourName;
-      out.push({ label, u: (x0 + x1 + 1) / 2, x0, y0, x1, y1, area: n, dim });
+      out.push({ label: colourName, u: (x0 + x1 + 1) / 2, x0, y0, x1, y1, area: n, dim });
     }
     return out;
   }
   let vmap = null;
+  function mergeStripes(list) {   // as perception.merge_stripes: a striped cone's stacked pieces become one blob
+    const merged = [];
+    for (const b of list.sort((p, q) => p.u - q.u)) {
+      let hit = null;
+      for (const m of merged) { const overlap = Math.min(b.x1, m.x1) - Math.max(b.x0, m.x0), width = Math.min(b.x1 - b.x0, m.x1 - m.x0), gap = Math.max(b.y0, m.y0) - Math.min(b.y1, m.y1), tall = Math.max(b.y1 - b.y0, m.y1 - m.y0);
+        if (overlap > 0.4 * width && gap < 1.2 * tall) { hit = m; break; } }
+      if (hit) { hit.x0 = Math.min(hit.x0, b.x0); hit.x1 = Math.max(hit.x1, b.x1); hit.y0 = Math.min(hit.y0, b.y0); hit.y1 = Math.max(hit.y1, b.y1); hit.u = (hit.x0 + hit.x1) / 2; hit.area += b.area; hit.dim = hit.dim && b.dim; hit.pieces = (hit.pieces || 1) + 1; }
+      else merged.push(Object.assign({}, b, { pieces: 1 }));
+    }
+    return merged.map(m => Object.assign(m, { label: m.label === "orange" && m.area < P.orange_min_px ? "yellow" : m.label }));
+  }
   function clusters(sc) {
     const out = [], xs = [], ys = []; let cur = [];
     const flush = () => { if (!cur.length) return; if (cur.length <= P.cone_max_points) { let mnx = 1e9, mxx = -1e9, mny = 1e9, mxy = -1e9, sx = 0, sy = 0; for (const i of cur) { sx += xs[i]; sy += ys[i]; mnx = Math.min(mnx, xs[i]); mxx = Math.max(mxx, xs[i]); mny = Math.min(mny, ys[i]); mxy = Math.max(mxy, ys[i]); }
@@ -194,8 +204,8 @@
     for (const [k, col] of [["band_top", "#aab2c5"], ["band_bottom", "#aab2c5"], ["band_floor", "#ff9f43"]]) { const y = Y(P[k] * H); c2.strokeStyle = col; c2.beginPath(); c2.moveTo(0, y); c2.lineTo(hud.width, y); c2.stroke(); c2.fillStyle = col; c2.font = font(11); c2.fillText(k.replace("band_", ""), 6 * dpr, y - 4 * dpr); }
     c2.setLineDash([]);
     // blobs
-    let all = []; for (const c of ["blue", "yellow", "orange"]) all = all.concat(blobs(masks[c], W, H, c));
-    for (const b of all) { c2.strokeStyle = COL[b.label]; c2.lineWidth = 2 * dpr; if (b.dim) c2.setLineDash([3 * dpr, 3 * dpr]); c2.strokeRect(X(b.x0), Y(b.y0), X(b.x1 - b.x0 + 1), Y(b.y1 - b.y0 + 1)); c2.setLineDash([]); c2.fillStyle = COL[b.label]; c2.font = font(11, true); c2.fillText(b.area + (b.dim ? " dim" : ""), X(b.x0), Y(b.y0) - 3 * dpr); }
+    let all = []; for (const c of ["blue", "yellow", "orange"]) all = all.concat(mergeStripes(blobs(masks[c], W, H, c)));
+    for (const b of all) { c2.strokeStyle = COL[b.label]; c2.lineWidth = 2 * dpr; if (b.dim) c2.setLineDash([3 * dpr, 3 * dpr]); c2.strokeRect(X(b.x0), Y(b.y0), X(b.x1 - b.x0 + 1), Y(b.y1 - b.y0 + 1)); c2.setLineDash([]); c2.fillStyle = COL[b.label]; c2.font = font(11, true); c2.fillText(b.area + (b.pieces > 1 ? " ×" + b.pieces : "") + (b.dim ? " dim" : ""), X(b.x0), Y(b.y0) - 3 * dpr); }
     // lidar cones -> columns, coloured by the nearest blob within tolerance (one blob per cone, closest first)
     let cl = scan ? clusters(scan) : [], matched = 0;
     const cols = cl.map(([x, y]) => column(x, y, W)); const tol = P.match_px_frac * W; const taken = new Set(), done = new Set(), pairs = [];
