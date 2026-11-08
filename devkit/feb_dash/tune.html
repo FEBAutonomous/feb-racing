@@ -211,9 +211,13 @@
 
   // ---- yaml
   function toYaml() {
-    const f = v => Array.isArray(v) ? "[" + v.join(", ") + "]" : typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/0+$/, "").replace(/\.$/, ".0")) : String(v);
+    // ROS parameter types are strict: a double written as "4" is read as an integer and the racer refuses it, so every
+    // float key keeps a decimal point and the integer keys never get one
+    const INTS = new Set(["min_blob_px", "orange_min_px", "blob_min_value"]);
+    const fl = v => { let t = Number(v).toFixed(4).replace(/0+$/, ""); if (t.endsWith(".")) t += "0"; return t; };
+    const f = (k, v) => Array.isArray(v) ? "[" + v.map(x => Math.round(x)).join(", ") + "]" : INTS.has(k) ? String(Math.round(v)) : fl(v);
     const keys = ["hsv_blue", "hsv_yellow", "hsv_orange", "band_top", "band_bottom", "band_floor", "min_blob_px", "orange_min_px", "blob_min_value", "camera_hfov_deg", "camera_ahead", "camera_lateral", "camera_col_bias", "max_range", "cluster_gap", "cone_max_width", "match_px_frac"];
-    const lines = keys.map(k => `    ${k}: ${f(P[k])}`);
+    const lines = keys.map(k => `    ${k}: ${f(k, P[k])}`);
     lines.push(`    camera_auto_exposure: ${$("ae").checked}`, `    camera_exposure: ${$("ae").checked ? 0 : parseInt($("exp").value || 0, 10)}`, `    camera_auto_wb: ${$("awb").checked}`, `    camera_white_balance: ${$("awb").checked ? 0 : parseInt($("wb").value || 0, 10)}`);
     return `# venue profile written by the dash Tune page on ${new Date().toISOString().slice(0, 16).replace("T", " ")}${META.host ? " from " + META.host : ""}\nracer:\n  ros__parameters:\n${lines.join("\n")}\n`;
   }
