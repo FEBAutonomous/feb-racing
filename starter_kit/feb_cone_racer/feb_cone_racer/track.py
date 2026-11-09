@@ -118,10 +118,19 @@ def repair_by_path(lhat, colour, path):
         return colour
     path = np.asarray(path, float)
     width = _usual_width(lhat, colour)
+    sides = np.array([side_of_path(path, q) for q in lhat])
+    # which hand is blue? Formula Student drives with blue on the left, but a test lap may be driven
+    # the other way round: the camera's own votes decide, by majority of the cones it coloured
+    voted = (colour == BLUE) | (colour == YELLOW)
+    left_is_blue = True
+    if voted.sum() >= 4:
+        agree = np.sum(((colour == BLUE) & (sides > 0)) | ((colour == YELLOW) & (sides < 0)))
+        left_is_blue = agree >= 0.5 * voted.sum()
     for i, q in enumerate(lhat):
-        d = side_of_path(path, q)
+        d = sides[i]
         if 0.35 * width < abs(d) < 1.6 * width:
-            colour[i] = BLUE if d > 0 else YELLOW
+            on_left = d > 0
+            colour[i] = (BLUE if on_left else YELLOW) if left_is_blue else (YELLOW if on_left else BLUE)
     return colour
 
 

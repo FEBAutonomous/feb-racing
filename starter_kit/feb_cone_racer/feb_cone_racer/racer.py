@@ -166,6 +166,7 @@ class Racer(Node):
         self.v_cmd = 0.0                         # the speed asked of the throttle law, rate limited
         self.v_goal = None                       # the follower's own speed, smoothed
         self.seen_pose, self.recovering = np.zeros(2), False          # where cones were last in view
+        self.cone_spacing = None                                      # running median spacing between cones in view (m)
         self.loc_log_t = 0.0
         self.last_seen_t = 0.0
         self.no_target = False
@@ -422,6 +423,15 @@ class Racer(Node):
                 self.snap_t = self.last_t
                 self.get_logger().info("loop closure at the start gate: pose corrected by %.2f m, %.1f m from the start"
                                        % (np.linalg.norm(t_snap), np.linalg.norm(found - self.start[0])))
+        # the association gate follows the track: Formula Student cones stand 3 to 5 m apart, a test
+        # corridor at home half a metre. Nearest-neighbour spacing of this scan's cones, smoothed; the
+        # gate is a little under half of it so neighbours never merge, within 0.25..new_landmark_dist
+        if len(z_rel) >= 3:
+            dd = np.linalg.norm(z_rel[:, None, :] - z_rel[None, :, :], axis=2)
+            np.fill_diagonal(dd, np.inf)
+            spacing = float(np.median(dd.min(axis=1)))
+            self.cone_spacing = spacing if self.cone_spacing is None else 0.8 * self.cone_spacing + 0.2 * spacing
+            self.slam.new_landmark_dist = float(np.clip(0.45 * self.cone_spacing, 0.25, p["new_landmark_dist"]))
         self.slam.add(self.since_key, z_rel, colours, weights)
         self.keyframes += 1
         self.since_key = np.zeros(2)
@@ -1065,6 +1075,8 @@ class Racer(Node):
             flags.append("map match lost")
         if not moving and self.throttle > 0.02:
             flags.append("not moving")
+        if self.cone_spacing is not None and self.mode == "MAPPING":
+            detail += " | cones %.2f m apart, gate %.2f" % (self.cone_spacing, self.slam.new_landmark_dist)
         return "%s | %s%s" % (what, detail, (" | " + ", ".join(flags)) if flags else "")
 
     def map_message(self):
