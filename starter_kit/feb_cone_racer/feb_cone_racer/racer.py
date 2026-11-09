@@ -1081,6 +1081,11 @@ class Racer(Node):
                 continue
             v = votes[i, 1:] if i < len(votes) else np.zeros(3)
             c = int(np.argmax(v)) + 1 if v.sum() > 0.0 else UNKNOWN     # grey until the camera has coloured it
+            # once the map is closed the track builder knows each cone's side from the driven path: that
+            # repair is the truth for blue and yellow (the start cones keep their orange)
+            rep = self.slam.colour_override
+            if rep is not None and i < len(rep) and c != ORANGE and rep[i] in (BLUE, YELLOW):
+                c = int(rep[i])
             # hysteresis: once shown, a colour only flips when the challenger leads by a full vote
             prev = shown.get(i)
             if prev not in (None, UNKNOWN) and c != UNKNOWN and prev != c and v[c - 1] - v[prev - 1] < 1.0:
