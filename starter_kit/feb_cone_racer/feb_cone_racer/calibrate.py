@@ -54,9 +54,13 @@ def read_bag(path, per, truth, image_hsv):
     hsv = None
     rows = []
     scans = 0
+    # the simulator's bags name the topics /autodrive/.../lidar, /front_camera, /imu; the car's are the
+    # contract's /scan, /camera/color/image_raw, /imu
+    is_scan = lambda t: t.endswith("/lidar") or t == "/scan"
+    is_image = lambda t: t.endswith("/front_camera") or t == "/camera/color/image_raw"
     while r.has_next():
         topic, data, _ = r.read_next()
-        if topic.endswith("/imu"):
+        if topic == "/imu" or topic.endswith("/imu") and not topic.startswith("/sensors"):
             m = deserialize_message(data, Imu)
             q = m.orientation
             yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
@@ -64,13 +68,13 @@ def read_bag(path, per, truth, image_hsv):
         elif topic.endswith("/ips"):
             m = deserialize_message(data, Point)
             ips = np.array([m.x, m.y])
-        elif topic.endswith("/front_camera"):
+        elif is_image(topic):
             m = deserialize_message(data, Image)
             per.on_image(m)
             if image_hsv:
                 img = np.frombuffer(m.data, dtype=np.uint8).reshape(m.height, m.width, 3)
                 hsv = cv2.cvtColor(np.ascontiguousarray(img[:, :, ::-1] if m.encoding == "rgb8" else img), cv2.COLOR_BGR2HSV)
-        elif topic.endswith("/lidar") and yaw is not None and per.blobs and (truth is None or ips is not None):
+        elif is_scan(topic) and yaw is not None and per.blobs and (truth is None or ips is not None):
             scans += 1
             clusters = per.clusters(deserialize_message(data, LaserScan))
             cols = [per.pixel_column(x, y, yaw_rate) for x, y in clusters]
@@ -226,7 +230,7 @@ def main(argv=None):
                  np.array([{"blue": BLUE, "yellow": YELLOW}.get(c["color"], ORANGE) for c in t["cones"]]))
     rows, scans = read_bag(args.bag, per, truth, image_hsv=True)
     if not rows:
-        sys.exit("nothing usable in the bag: it needs lidar, front_camera and imu (and ips with --track)")
+        sys.exit("nothing usable in the bag: it needs the scan, the camera image and /imu (and ips with --track)")
     W = per.image_width
     H = int(round(max(r["blob"][3] for r in rows if r["blob"] is not None) / max(p["band_bottom"], 0.01))) if any(r["blob"] for r in rows) else 0
     H = rows[0]["hsv"].shape[0] if rows[0]["hsv"] is not None else H
