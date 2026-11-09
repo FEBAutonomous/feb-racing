@@ -283,7 +283,9 @@ class GraphSLAM:
             before = len(self.lhat)
             self.refile()
             self.refiled = (before, len(self.lhat))
-        keep = self.seen >= min_seen
+        # a landmark stays if seen at min_seen keyframes, or seen once but coloured by the camera with a clear
+        # vote (a small far cone passes few keyframes; a lidar-only speck seen once does not qualify)
+        keep = (self.seen >= min_seen) | (self.votes[:, 1:].max(axis=1) >= 0.6)
         lhat, votes, count = self.lhat[keep], self.votes[keep], self.count[keep]
         col = np.argmax(votes[:, 1:], axis=1) + 1
         col[votes[:, 1:].sum(axis=1) <= 0.0] = UNKNOWN

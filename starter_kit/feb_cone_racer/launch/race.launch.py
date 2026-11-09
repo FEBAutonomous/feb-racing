@@ -42,6 +42,7 @@ def racer_files(context):
         # colour cones as far as the lidar clusters them cleanly, so a cone is coloured while it is still
         # ahead in the camera's view; a venue profile's short HSV range (clutter at range) does not apply
         overrides["max_range"] = 5.0
+        overrides["keyframe_dist"] = 0.2       # twice the sightings per cone: a small far cone is in view for few keyframes
     model = LaunchConfiguration("detector_model").perform(context)
     if model:
         overrides["detector_model"] = model
