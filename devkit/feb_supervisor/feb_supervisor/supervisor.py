@@ -52,12 +52,15 @@ class Supervisor(Node):
                         manual_button=4, auto_button=5, stop_button=6, speed_axis=1, steer_axis=3,
                         manual_speed=1.0, manual_steer=0.4,
                         battery_floor=0.0, battery_cut=0.0, speed_ceiling=0.0,
-                        stall_current=0.0, stall_time=0.5, stall_erpm=400.0, stall_release=1.0)
+                        stall_current=0.0, stall_time=0.5, stall_erpm=400.0, stall_release=1.0,
+                        release_grace=0.2)       # s a button may read unpressed while the pad is still talking: the 8BitDo's
+                                                 # buttons flicker (4 drops in 31 s held, 2026-11-08); a lost pad still stops at once
         for key, value in defaults.items():
             self.declare_parameter(key, value)
         self.p = {k: self.get_parameter(k).value for k in defaults}
 
         self.state = IDLE
+        self.held_t = {}                 # button name -> when it last read pressed (release_grace)
         self.reason = "boot"
         self.joy = None
         self.joy_t = None
@@ -171,7 +174,15 @@ class Supervisor(Node):
 
     def button(self, name):
         i = self.p[name]
-        return bool(self.joy and self.joy_t and self.now() - self.joy_t < 0.5 and i < len(self.joy.buttons) and self.joy.buttons[i])
+        fresh = bool(self.joy and self.joy_t and self.now() - self.joy_t < 0.5)
+        pressed = fresh and i < len(self.joy.buttons) and bool(self.joy.buttons[i])
+        if name == "stop_button":
+            return pressed                                       # the stop button needs no grace
+        held = self.held_t.setdefault(name, None)
+        if pressed:
+            self.held_t[name] = self.now()
+            return True
+        return fresh and held is not None and self.now() - held < self.p["release_grace"]
 
     def axis(self, name):
         i = self.p[name]

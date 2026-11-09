@@ -348,6 +348,15 @@ from the VESC's own IMU (the D435 has none; `imu_relay` republishes `/sensors/im
 on `/camera/color/image_raw`, `/feb/battery` from the VESC's voltage. Until the devkit image carries
 `imu_relay`, `feb up --car` runs it from this clone, so a pull is enough.
 
+**Recording and reading a car session.** In a second terminal on the car, `./feb shell -c "cd ~/FEB/bags && ros2 bag record -a -o NAME"`
+records everything (about 25 MB/s with the camera); Ctrl-C ends it. Then
+`./feb shell -c "python3 ~/FEB/feb-racing/tools/car_bag_report.py ~/FEB/bags/NAME"` prints the health
+read: pad dropouts and button flicker, the supervisor's state changes, IMU units and bias, heading
+drift, the turn total against the kinematic bicycle, speeds and the racer's phases. The cone racer's
+camera geometry is fitted from the same bag with
+`./feb shell -c "ros2 run feb_cone_racer calibrate_camera ~/FEB/bags/NAME --params ~/FEB/feb-racing/starter_kit/feb_cone_racer/config/racer.car.yaml"`
+and pasted into `racer.car.yaml`. Keep bags out of git.
+
 ## Ports and overrides
 
 | Variable | Default | |
