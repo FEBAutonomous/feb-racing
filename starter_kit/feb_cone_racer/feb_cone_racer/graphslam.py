@@ -46,6 +46,7 @@ class GraphSLAM:
         self._eq([(1, 1.0)], x0[1])
         self.xhat = np.array([[x0[0], x0[1]]], dtype=float)
         self.frozen = False
+        self.obs = []                          # every keyframe's sightings: (keyframe, z_rel, colour, weight), see refile()
         self.colour_override = None            # colours repaired by the track builder, once frozen
         self.last_matched = []
 
@@ -179,6 +180,7 @@ class GraphSLAM:
         dx, z_rel, colour = np.asarray(dx, float), np.asarray(z_rel, float).reshape(-1, 2), np.asarray(colour, int)
         weight = np.ones(len(colour)) if weight is None else np.asarray(weight, float)
         prev = self.x[-1]
+        self.obs.append((len(self.x), z_rel.copy(), colour.copy(), weight.copy()))   # keyframe index into xhat, for refile()
         self.x.append(self.nvars)
         self.nvars += 2
         w = self.dx_weight
@@ -234,26 +236,72 @@ class GraphSLAM:
 
     # ------------------------------------------------------------ frozen map
 
-    def freeze(self, min_seen=2):
-        """Stop mapping; drop landmarks seen fewer than min_seen times and merge any two of the
-        same colour closer than half the association gate (duplicates from drift)."""
+    def refile(self, radius=None):
+        """Rebuild the landmarks from every sighting, placed through the keyframe poses as the solved
+        graph now has them. During the lap a sighting was filed against the landmarks as believed at
+        that moment, with the pose still drifting; the loop closure then moved the poses but not the
+        votes, so cones a metre apart had merged or swapped colours. Here each sighting goes to the
+        nearest landmark of its colour (or an uncoloured one) within `radius`, else starts a new one;
+        positions are the mean of their sightings, votes and counts are recounted."""
+        if not self.obs:
+            return
+        radius = radius if radius is not None else float(np.clip(0.8 * self.new_landmark_dist, 0.25, 0.45))
+        pts, votes, counts, cols = [], [], [], []
+        for k, z_rel, colour, weight in self.obs:
+            if k >= len(self.xhat):
+                continue
+            world = self.xhat[k] + z_rel
+            for i in range(len(world)):
+                c = int(colour[i])
+                j = None
+                if pts:
+                    P = np.array(pts); d = np.linalg.norm(P - world[i], axis=1)
+                    ok = d < radius
+                    if c != UNKNOWN:
+                        ok &= (np.array(cols) == c) | (np.array(cols) == UNKNOWN)
+                    if ok.any():
+                        j = int(np.flatnonzero(ok)[np.argmin(d[ok])])
+                if j is None:
+                    pts.append(world[i].copy()); votes.append(np.zeros(4)); counts.append(0); cols.append(UNKNOWN)
+                    j = len(pts) - 1
+                n = counts[j]
+                pts[j] = (pts[j] * n + world[i]) / (n + 1)
+                counts[j] = n + 1
+                votes[j][c] += float(weight[i])
+                v = votes[j][1:]
+                cols[j] = int(np.argmax(v)) + 1 if v.sum() > 0 else UNKNOWN
+        self.lhat = np.array(pts).reshape(-1, 2)
+        self.votes = np.array(votes).reshape(-1, 4)
+        self.count = np.array(counts, dtype=int)
+
+    def freeze(self, min_seen=2, refile=True):
+        """Stop mapping; refile every sighting through the solved poses (see refile), drop landmarks
+        seen fewer than min_seen times and merge any two of the same colour closer than half the
+        association gate (duplicates from drift)."""
         self.solve()
+        if refile:
+            before = len(self.lhat)
+            self.refile()
+            self.refiled = (before, len(self.lhat))
         keep = self.seen >= min_seen
         lhat, votes, count = self.lhat[keep], self.votes[keep], self.count[keep]
         col = np.argmax(votes[:, 1:], axis=1) + 1
         col[votes[:, 1:].sum(axis=1) <= 0.0] = UNKNOWN
+        # after refiling the positions are consistent, so only near-coincident landmarks are duplicates
+        merge_radius = 0.25 if refile else 0.5 * self.new_landmark_dist + 0.2
         merged = np.ones(len(lhat), dtype=bool)
         for i in range(len(lhat)):
             if not merged[i]:
                 continue
             for j in range(i + 1, len(lhat)):
-                if merged[j] and (col[i] == col[j] or col[i] == UNKNOWN or col[j] == UNKNOWN) and np.linalg.norm(lhat[i] - lhat[j]) < 0.5 * self.new_landmark_dist + 0.2:
+                if merged[j] and (col[i] == col[j] or col[i] == UNKNOWN or col[j] == UNKNOWN) and np.linalg.norm(lhat[i] - lhat[j]) < merge_radius:
                     wi, wj = count[i], count[j]
                     lhat[i] = (wi * lhat[i] + wj * lhat[j]) / (wi + wj + 1e-9)
                     votes[i] += votes[j]
                     count[i] += count[j]
                     merged[j] = False
         self.lhat, self.votes, self.count = lhat[merged], votes[merged], count[merged]
+        self.freeze_counts = (int(len(keep)), int(keep.sum()), int(merged.sum()))     # before, seen >= min_seen, after merge
         self.frozen = True
 
     def localise(self, pose_guess, z_rel, colour, wide=True, subset=None):

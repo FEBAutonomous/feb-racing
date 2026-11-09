@@ -463,6 +463,9 @@ class Racer(Node):
         `order_timeout`, the built-in boundary walk takes over."""
         p = self.p
         self.slam.freeze(int(p["min_seen"]))
+        if getattr(self.slam, "refiled", None):
+            self.get_logger().info("map closed: sightings refiled through the solved poses, %d landmarks during the lap -> %d; seen >= %d: %d; after merging duplicates: %d"
+                                   % (*self.slam.refiled, int(p["min_seen"]), self.slam.freeze_counts[1], self.slam.freeze_counts[2]))
         self.lap_times.append(self.last_t - self.lap_start_t)
         self.slam.colour_override = repair_by_path(self.slam.lhat, self.slam.colour, self.slam.xhat)
         self.map_closed_t = time.time()
