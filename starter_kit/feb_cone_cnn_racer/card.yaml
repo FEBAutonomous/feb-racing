@@ -1,0 +1,17 @@
+# The cone racer with a trained detector for the cone colours instead of colour thresholds. Same
+# mapping, raceline and MPC as feb_cone_racer (it launches that package's node with detector:=cnn);
+# no venue profile needed. Needs the model file and onnxruntime in the box (see docs/devkit.md).
+#   ./feb up --car --driver feb_cone_cnn_racer --mode-name inspection
+name: feb_cone_cnn_racer
+kind: cones
+maintainer: FEB autonomous team
+packages: [feb_cone_cnn_racer, feb_cone_racer]
+modes:
+  trackdrive:
+    launch: race.launch.py
+    max_speed: 10.0
+  inspection:
+    launch: race.launch.py
+    max_speed: 0.8
+default_mode: trackdrive
+adapter: {speed_per_throttle: 25.11, throttle_kp: 0.0, throttle_ki: 0.0, throttle_slew: 100.0, speed_window: 0.05}

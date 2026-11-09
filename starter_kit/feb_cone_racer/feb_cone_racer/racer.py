@@ -64,6 +64,8 @@ DEFAULTS = dict(
     band_top=0.20, band_bottom=0.36, band_floor=0.21, orange_min_px=35, blob_min_value=25,
     # the camera itself (a venue profile may fix exposure and white balance; see camera_lock.py)
     camera_auto_exposure=True, camera_exposure=0, camera_auto_wb=True, camera_white_balance=0,
+    # which camera perception: "hsv" (colour thresholds, perception.py) or "cnn" (a trained detector, perception_cnn.py)
+    detector="hsv", detector_model="/home/feb/FEB/cone-detector/cones.onnx", detector_conf=0.3,
     # lap-1 follower
     map_speed=1.2, map_min_speed=0.8, lookahead=1.0, follow_range=3.5, throttle_start=0.07, chain_step=1.8, avoid_range=0.9, local_path_lookahead=1.4, local_path_min_reach=2.0, rung_max_age=1.0,
     speed_per_throttle=24.95, speed_tau=0.8, throttle_kp=0.02, throttle_ki=0.03, throttle_slew=0.8, speed_window=0.25, steer_tau=0.15,
@@ -98,7 +100,13 @@ class Racer(Node):
             self.declare_parameter(k, v)
         self.p = {k: self.get_parameter(k).value for k in DEFAULTS}
         p = self.p
-        self.perception = Perception(p)
+        if p["detector"] == "cnn":
+            from .perception_cnn import CnnPerception
+            self.perception = CnnPerception(p, p["detector_model"], conf=float(p["detector_conf"]))
+            self.get_logger().info("perception: detector %s (%s)" % (p["detector_model"], self.perception.provider))
+        else:
+            self.perception = Perception(p)
+        self.pub_detections = self.create_publisher(String, "/feb/detections", 10)   # the detector's boxes as JSON, for the dash
         self.camera_lock = CameraLock(self, p)
         if not self.camera_lock.done:
             self.lock_timer = self.create_timer(1.0, lambda: self.camera_lock.apply() and self.lock_timer.cancel())
@@ -191,7 +199,7 @@ class Racer(Node):
         self.status_t = -1e9
         self.pub_pred = self.create_publisher(Path, "/feb/mpc_prediction", 10)
         self.create_subscription(LaserScan, "/scan", self.on_scan, QOS)
-        self.create_subscription(Image, "/camera/color/image_raw", self.perception.on_image, QOS)
+        self.create_subscription(Image, "/camera/color/image_raw", self.on_image, QOS)
         self.create_subscription(Imu, "/imu", self.on_imu, QOS)
         self.create_subscription(Odometry, "/odom", self.on_odom, QOS)
         self.create_subscription(String, "/feb/state", self.on_state, 10)
@@ -219,6 +227,14 @@ class Racer(Node):
             self.speed = v
         if time.monotonic() - self.steer_fb_t > 1.0:      # no feedback: the command through the servo's lag
             self.delta += (self.steer - self.delta) * min(1.0, 0.1 / 0.25)
+
+    def on_image(self, msg):
+        self.perception.on_image(msg)
+        dets = getattr(self.perception, "detections", None)
+        if dets is not None:
+            import json
+            self.pub_detections.publish(String(data=json.dumps({"w": msg.width, "h": msg.height,
+                "boxes": [[c, round(conf, 2), round(x0), round(y0), round(x1), round(y1)] for c, conf, x0, y0, x1, y1 in dets]})))
 
     def on_state(self, msg):
         """The supervisor's word. The race state (lap closure, stall checks, lap counting) only
@@ -1054,7 +1070,14 @@ class Racer(Node):
     def map_message(self):
         arr = PoseArray()
         arr.header.frame_id = "map"
-        for (x, y), c in zip(self.slam.lhat, self.slam.colour):
+        # the colour as voted (the track builder's repaint of the orange start cones to their side is for
+        # the boundaries, not for the map people look at), and only landmarks seen at least twice
+        votes = self.slam.votes
+        colours = (np.argmax(votes[:, 1:], axis=1) + 1) if len(votes) else np.zeros(0, dtype=int)
+        counts = self.slam.count
+        for i, ((x, y), c) in enumerate(zip(self.slam.lhat, colours)):
+            if i < len(counts) and counts[i] < 2:
+                continue
             q = Pose()
             q.position.x, q.position.y, q.orientation.w = float(x), float(y), float(c)
             arr.poses.append(q)

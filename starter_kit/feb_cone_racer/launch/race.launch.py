@@ -29,14 +29,23 @@ def racer_files(context):
     extra = os.environ.get("FEB_RACER_PARAMS", "")
     if extra and os.path.exists(extra):
         files.append(extra)
+    overrides = {"use_sim_time": not on_car}
+    detector = LaunchConfiguration("detector").perform(context)
+    if detector:
+        overrides["detector"] = detector
+    model = LaunchConfiguration("detector_model").perform(context)
+    if model:
+        overrides["detector_model"] = model
     return [Node(package="feb_cone_racer", executable="racer", name="racer",
-                 parameters=files + [{"use_sim_time": not on_car}], output="screen", emulate_tty=True)]
+                 parameters=files + [overrides], output="screen", emulate_tty=True)]
 
 
 def generate_launch_description():
     actions = [
         DeclareLaunchArgument("mode", default_value="trackdrive"),
         DeclareLaunchArgument("profile", default_value="", description="venue profile in config/venues/"),
+        DeclareLaunchArgument("detector", default_value="", description="hsv (default) or cnn"),
+        DeclareLaunchArgument("detector_model", default_value="", description="ONNX file for detector:=cnn"),
         SetEnvironmentVariable("PYTHONPATH", DEPS + ":" + os.environ.get("PYTHONPATH", "")),
         OpaqueFunction(function=racer_files),
     ]

@@ -138,6 +138,8 @@ class Perception:
         n = len(clusters)
         cols = [self.pixel_column(x, y, yaw_rate) if self.image_width else float("nan") for x, y in clusters]
         colour, dim, taken = [None] * n, [False] * n, set()
+        conf = [1.0] * n                                  # a detector's confidence, when the blobs carry one
+        self._conf = conf
         if self.blobs and self.image_width:
             tol = self.p["match_px_frac"] * self.image_width
             pairs = sorted((abs(b[1] - cols[i]), i, k) for i in range(n) if not math.isnan(cols[i])
@@ -148,6 +150,8 @@ class Perception:
                     continue
                 done.add(i), taken.add(k)
                 colour[i], dim[i] = self.blobs[k][0], self.blobs[k][5]
+                if len(self.blobs[k]) > 6:
+                    conf[i] = float(self.blobs[k][6])
         amb_px = 0.065 * self.image_width if self.image_width else 12.0
         ambiguous = [not math.isnan(cols[i]) and any(j != i and not math.isnan(cols[j]) and abs(cols[j] - cols[i]) < amb_px for j in range(n)) for i in range(n)]
         return colour, ambiguous, dim
@@ -177,7 +181,7 @@ class Perception:
             # (on this camera one reading in five is wrong beyond 4 m, one in thirty within 2 m)
             reach = float(np.clip(1.3 - 0.15 * math.hypot(x, y), 0.35, 1.0))
             colour, age = cam_colour[i], 0
-            weight = 0.0 if colour is None else (0.3 if ambiguous[i] else 1.0) * reach
+            weight = 0.0 if colour is None else (0.3 if ambiguous[i] else 1.0) * reach * self._conf[i]
             # the same cone last scan: its colour votes carry over, so one wrong reading of a
             # cone the camera has seen right several times does not change it
             votes = {}

@@ -124,7 +124,7 @@
       <div class="rail" id="rail-phase"></div>
     </section>
     <section class="panel"><h3>Car</h3><div class="tiles" id="tiles"></div></section>
-    <section class="panel" id="campanel" style="display:none"><h3>Camera <span class="right mono" id="camhz"></span></h3><img class="cam" id="cam" alt=""></section>
+    <section class="panel" id="campanel" style="display:none"><h3>Camera <span class="right mono" id="camhz"></span></h3><div style="position:relative"><img class="cam" id="cam" alt=""><canvas id="camboxes" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none"></canvas></div></section>
     <section class="panel"><h3>Topics <span class="right mono" id="topiccount"></span></h3><table id="topics"></table></section>
     <section class="panel"><h3>Nodes</h3><div class="nodes" id="nodes"></div></section>
   </aside>
@@ -235,6 +235,18 @@
     return `<div class="tile wide"><div class="k">battery</div><div class="batt ${cls}"><div class="cell"><b style="width:${pct === null ? 0 : pct}%"></b></div>
       <div><div class="v">${num(b.v, 1)}<small>V</small>${pct !== null ? ` &nbsp;${num(pct, 0)}<small>%</small>` : ""}${b.i !== undefined && b.i !== null ? ` &nbsp;<small>${num(Math.abs(b.i), 1)} A</small>` : ""}</div><div class="txt">${esc(txt.replace(/^[\d.]+ V\s+\d+%\s*/, ""))}</div></div></div></div>`;
   }
+  function drawDetections() {   // the detector's boxes (/feb/detections, JSON) over the camera thumbnail
+    const c = el("camboxes"), img = el("cam"); if (!c || !img) return;
+    const d = fresh("/feb/detections", 1.0) ? S.topics["/feb/detections"].data : null;
+    const r = img.getBoundingClientRect(); c.width = Math.round(r.width); c.height = Math.round(r.height);
+    const g = c.getContext("2d"); g.clearRect(0, 0, c.width, c.height);
+    if (!d) return;
+    let boxes = d; if (typeof d === "string") { try { boxes = JSON.parse(d); } catch (e) { return; } }
+    const sx = c.width / boxes.w, sy = c.height / boxes.h;
+    for (const [cls, conf, x0, y0, x1, y1] of boxes.boxes || []) { const col = [COL[1], COL[2], COL[3]][cls] || COL[0];
+      g.strokeStyle = col; g.lineWidth = 2; g.strokeRect(x0 * sx, y0 * sy, (x1 - x0) * sx, (y1 - y0) * sy);
+      g.fillStyle = col; g.font = "bold 10px JetBrains Mono"; g.fillText(conf.toFixed(2), x0 * sx + 2, y0 * sy - 2); }
+  }
   function drawTrace() {
     const c = document.getElementById("trace"); if (!c) return;
     const r = c.getBoundingClientRect(); const W = c.width = Math.round(r.width * devicePixelRatio), H = c.height = Math.round(r.height * devicePixelRatio);
@@ -264,7 +276,7 @@
     }
     for (const n of ["/feb/status", "/feb/mode"]) { const t = T[n]; if (t && t.data !== undefined) tiles.push(`<div class="tile wide ${fresh(n, 3) ? "" : "dim"}"><div class="k">${esc(n.slice(5))}</div><div class="v text">${esc(String(t.data))}</div></div>`); }
     for (const [n, t] of Object.entries(T)) {   // every other small value under /feb/
-      if (!n.startsWith("/feb/") || t.data === undefined || typeof t.data === "object" || ["/feb/status", "/feb/mode", "/feb/state", "/feb/mission/live", "/feb/battery_text"].includes(n) || ((META.dash && META.dash.tiles) || []).includes(n)) continue;
+      if (!n.startsWith("/feb/") || t.data === undefined || typeof t.data === "object" || ["/feb/status", "/feb/mode", "/feb/state", "/feb/mission/live", "/feb/battery_text", "/feb/detections"].includes(n) || ((META.dash && META.dash.tiles) || []).includes(n)) continue;
       tiles.push(tile(n.slice(5), typeof t.data === "number" ? num(t.data, 3) : esc(String(t.data)), "", typeof t.data === "number" ? "num" : ""));
     }
     el("tiles").innerHTML = tiles.join("");
@@ -272,7 +284,7 @@
 
     const cam = Object.entries(T).find(([n, t]) => t.data && t.data.jpg);
     el("campanel").style.display = cam ? "" : "none";
-    if (cam) { el("cam").src = "data:image/jpeg;base64," + cam[1].data.jpg; el("camhz").textContent = cam[0] + " " + num(cam[1].hz, 1) + " Hz"; }
+    if (cam) { el("cam").src = "data:image/jpeg;base64," + cam[1].data.jpg; el("camhz").textContent = cam[0] + " " + num(cam[1].hz, 1) + " Hz"; drawDetections(); }
 
     const names = Object.keys(T).sort();
     el("topiccount").textContent = names.length + " topics";
