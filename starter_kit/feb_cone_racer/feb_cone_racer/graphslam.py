@@ -193,17 +193,25 @@ class GraphSLAM:
         zw = zw @ R.T + t
         self.xhat[-1] = R @ guess + t
         self.last_matched = []                  # landmarks this keyframe was associated with (loop closure looks at it)
+        lcol = self.colour if len(self.lhat) else np.zeros(0, dtype=int)
         for i in range(len(zw)):
             j = None
             if len(self.lhat):
                 d = np.linalg.norm(self.lhat - zw[i], axis=1)
-                k = int(np.argmin(d))
-                if d[k] < self.new_landmark_dist:
+                # colour is part of the association: within the gate, the nearest landmark of this colour (or
+                # one not yet coloured); a landmark of another colour standing just as close is a different cone
+                # (cones a metre apart with a few decimetres of pose jitter otherwise swap votes)
+                ok = d < self.new_landmark_dist
+                if colour[i] != UNKNOWN:
+                    ok &= (lcol == colour[i]) | (lcol == UNKNOWN)
+                if ok.any():
+                    k = int(np.flatnonzero(ok)[np.argmin(d[ok])])
                     j = k
                     self.last_matched.append(k)
             if j is None:
                 j = len(self.lhat)
                 self.lhat = np.vstack([self.lhat, zw[i]])
+                lcol = np.append(lcol, UNKNOWN)            # the new landmark has no colour yet (keeps lcol as long as lhat)
                 self.votes = np.vstack([self.votes, np.zeros(4)])
                 self.count = np.append(self.count, 0)
                 self.l.append(self.nvars)
