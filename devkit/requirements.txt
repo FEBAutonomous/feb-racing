@@ -15,3 +15,4 @@ websocket-client==1.6.4
 # the cone racer's solver and its maths, so no package needs a private install
 scipy==1.11.4
 casadi==3.8.1
+onnxruntime==1.23.2      # feb_cone_cnn_racer: the cone detector (ONNX) on the CPU; the Jetson gets onnxruntime-gpu/TensorRT later

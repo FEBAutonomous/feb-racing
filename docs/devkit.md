@@ -288,6 +288,16 @@ Ten minutes, once per place, with the car on the floor and `feb up --car` runnin
 For the geometry numbers there is also the bag fit, `ros2 run feb_cone_racer calibrate_camera <bag>`,
 which fits them from a slow lap past cones; the Tune page is the quick check and the colour tune.
 
+## The detector racer
+
+`feb_cone_cnn_racer` is `feb_cone_racer` with a trained detector giving the cone colours instead
+of colour thresholds, so there is no venue profile to tune. Same card, modes, mapping, raceline and
+MPC. It needs two things the box may not have yet: `onnxruntime` (in the image from the next build;
+until then `./feb shell -c "pip install onnxruntime"`) and the model file at
+`~/FEB/cone-detector/cones.onnx` (the FEB folder is mounted into the box). The model is trained on
+this PC from car bags; see `~/FEB/cone-detector`. In detector mode the geometric side guesses are
+off and cones are coloured out to 5 m; a box with no lidar cone on its bearing is never used.
+
 ## Getting a driver onto the car
 
 Team drivers live in `FEBAutonomous/feb-stack`, one folder per person under `drivers/`. Nobody
