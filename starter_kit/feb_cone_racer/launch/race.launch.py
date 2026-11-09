@@ -39,6 +39,9 @@ def racer_files(context):
         # narrow test track they fire constantly and mislabel, so they are off. Unseen cones stay unknown.
         overrides["side_guess_range"] = 0.0
         overrides["side_override_x"] = 0.0
+        # colour cones as far as the lidar clusters them cleanly, so a cone is coloured while it is still
+        # ahead in the camera's view; a venue profile's short HSV range (clutter at range) does not apply
+        overrides["max_range"] = 5.0
     model = LaunchConfiguration("detector_model").perform(context)
     if model:
         overrides["detector_model"] = model
