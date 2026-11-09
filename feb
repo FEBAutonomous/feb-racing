@@ -333,7 +333,7 @@ def cmd_stop(_=None):
         docker("exec", BOX, "feb-up", "--stop")
         docker("exec", BOX, "bash", "-c", "pkill -f feb_tools/key_joy 2>/dev/null; true")   # a dead-man terminal closed without Q
         docker("exec", BOX, "pkill", "-f", "feb_dash/relay.py")                           # the dash relay, if its feb up died without cleaning up
-        docker("exec", BOX, "pkill", "-f", "feb_tools/imu_relay.py")                      # the car's IMU helper (see car_helpers)
+        docker("exec", BOX, "pkill", "-f", "imu_relay.py")                                # the car's IMU helper (see car_helpers)
     kill_dash()
     kill_sim()
     print("stopped")
@@ -625,7 +625,7 @@ def cmd_up(args):
         if dash_proc and dash_proc.poll() is None:
             dash_proc.terminate()
         docker("exec", BOX, "feb-up", "--stop")
-        docker("exec", BOX, "pkill", "-f", "feb_tools/imu_relay.py")
+        docker("exec", BOX, "pkill", "-f", "imu_relay.py")
         docker("rm", "-f", OPPONENT, PROXY)
         try:
             house.wait(15)
@@ -817,6 +817,7 @@ def car_helpers():
     has = docker("exec", BOX, "grep", "-q", "imu_relay", "/home/autodrive_devkit/src/feb_tools/launch/car.launch.py").returncode == 0
     if has:
         return
+    docker("exec", BOX, "pkill", "-f", "imu_relay.py")       # one relay, whatever an earlier run (or a hand-started copy) left behind
     inner = f"source /opt/ros/humble/setup.bash; exec python3 {ROOT_IN}/devkit/feb_tools/feb_tools/imu_relay.py"
     docker("exec", "-d", "-u", "feb", BOX, "bash", "-lc", inner)
     print("car: /imu relayed from the VESC's IMU by this clone (the image's car launch predates imu_relay; `feb update` will carry it)")

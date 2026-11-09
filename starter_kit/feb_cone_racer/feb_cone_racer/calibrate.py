@@ -91,20 +91,56 @@ def read_bag(path, per, truth, image_hsv):
                     d = np.linalg.norm(truth[0] - w, axis=1)
                     k = int(np.argmin(d))
                     tc = int(truth[1][k]) if d[k] < 0.4 else None
-                rows.append(dict(x=x, y=y, col=cols[i], lonely=lonely, blob=blob, truth=tc, yaw_rate=yaw_rate, hsv=hsv))
+                rows.append(dict(x=x, y=y, col=cols[i], lonely=lonely, blob=blob, truth=tc, yaw_rate=yaw_rate, hsv=hsv,
+                                 blobs=[(b[0], b[1]) for b in per.blobs]))
+    # the VESC's driver reports the gyro in degrees per second; the racer's relay converts, an old bag may not have
+    rates = np.array([abs(r["yaw_rate"]) for r in rows]) if rows else np.zeros(1)
+    if np.percentile(rates, 95) > 8.0:
+        print("note: yaw rates look like degrees per second (95th percentile %.0f); converting to rad/s" % np.percentile(rates, 95))
+        for r in rows:
+            r["yaw_rate"] = math.radians(r["yaw_rate"])
     return rows, scans
 
 
 def fit_geometry(rows, W, p, truth=False):
     """Column model u = W/2 - fx * (y - dy) / (x - x0) + bias, then the lag from the error's
     slope against yaw rate. Uses cones with one clear blob and nothing else on the bearing."""
-    S = [(r["x"], r["y"], r["blob"][1], r["yaw_rate"]) for r in rows if r["lonely"] and r["blob"] is not None
-         and abs(r["blob"][1] - r["col"]) < 0.04 * W and 1.0 < math.hypot(r["x"], r["y"]) < 6.0
-         and (r["truth"] == r["blob"][0] if truth else True)]
-    if len(S) < 200:
-        return None, "only %d clear cone-blob pairs (need a few hundred: drive past more cones)" % len(S)
-    A = np.array(S)
-    keep = np.ones(len(A), dtype=bool)
+    # pairing a lidar cone with its blob needs the geometry, and the geometry comes from the pairs: so the
+    # pairs are made from the current model with a wide tolerance (a cone spacing), the model refitted, and
+    # the tolerance tightened, three rounds. Cones with no other cone on their bearing only.
+    cand = [r for r in rows if r["lonely"] and r["blobs"] and 1.0 < math.hypot(r["x"], r["y"]) < 6.0 and abs(r["yaw_rate"]) < 1.5]
+    if len(cand) < 200:
+        return None, "only %d lidar cones with a clear bearing and an image (need a few hundred: drive past more cones)" % len(cand)
+    fx0 = (W / 2) / math.tan(math.radians(p["camera_hfov_deg"]) / 2)
+    model = dict(fx=fx0, x0=p["camera_ahead"], dy=p["camera_lateral"], bias=p["camera_col_bias"], lag=p["camera_lag_s"])
+    def predict(m, x, y, yr):
+        return W / 2 - m["fx"] * (y - m["dy"]) / max(x - m["x0"], 0.2) + m["bias"] - m["fx"] * m["lag"] * yr
+    A = None
+    for tol in (0.10, 0.06, 0.04):
+        S = []
+        for r in cand:
+            u0 = predict(model, r["x"], r["y"], r["yaw_rate"])
+            near = [b for b in r["blobs"] if abs(b[1] - u0) < tol * W and (r["truth"] == b[0] if truth else True)]
+            if len(near) == 1:
+                S.append((r["x"], r["y"], near[0][1], r["yaw_rate"]))
+        if len(S) < 150:
+            return None, "only %d cone-blob pairs within %.0f%% of the width (the camera geometry may be far off; check the mount)" % (len(S), tol * 100)
+        A = np.array(S)
+        keep = np.ones(len(A), dtype=bool)
+        model, sd = _solve(A, keep, W, model)
+    x0, fx, dy, bias, lag = model["x0"], model["fx"], model["dy"], model["bias"], model["lag"]
+    hfov = 2 * math.degrees(math.atan((W / 2) / fx))
+    if not 35 < hfov < 95 or abs(dy) > 0.4 or abs(bias) > 120:
+        return None, "the fit ran away (hfov %.0f, lateral %.2f, bias %.0f): the pairs are not trustworthy, record a slower lap with the cones well apart" % (hfov, dy, bias)
+    return dict(camera_hfov_deg=round(hfov, 1), camera_ahead=round(x0, 2), camera_lateral=round(dy, 3),
+                camera_col_bias=round(bias, 1), camera_lag_s=round(lag, 3)), \
+        "%d pairs, residual %.1f px (hfov %.1f, ahead %.2f, lateral %.3f, bias %.1f px, lag %.3f s)" % (len(A), sd, hfov, x0, dy, bias, lag)
+
+
+def _solve(A, keep, W, start):
+    """One fit of the column model to the pairs in A: x0 scanned, the rest linear least squares, the
+    pairs that do not fit dropped and the fit repeated. Returns (model, residual sd)."""
+    best_model, sd = dict(start), 0.0
     # u - W/2 = -fx * (y - dy) / (x - x0) + bias - fx * lag * yaw_rate: linear in fx, fx*dy,
     # bias and fx*lag once x0 is fixed, so x0 is scanned and the rest solved by least squares;
     # then the pairs that do not fit (a wrong blob) are dropped and it is done again
@@ -129,10 +165,8 @@ def fit_geometry(rows, W, p, truth=False):
         pred = W / 2 - fx * (A[:, 1] - dy) / np.maximum(cx, 0.2) + bias - fx * lag * A[:, 3]
         e_all = A[:, 2] - pred
         keep = (cx > 0.2) & (np.abs(e_all - np.median(e_all[keep])) < 3.0 * max(sd, 1.0))
-    hfov = 2 * math.degrees(math.atan((W / 2) / fx))
-    return dict(camera_hfov_deg=round(hfov, 1), camera_ahead=round(x0, 2), camera_lateral=round(dy, 3),
-                camera_col_bias=round(bias, 1), camera_lag_s=round(lag, 3)), \
-        "%d pairs kept of %d, residual %.2f px" % (int(keep.sum()), len(A), e_all[keep].std())
+        best_model = dict(fx=fx, x0=x0, dy=dy, bias=bias, lag=lag)
+    return best_model, sd
 
 
 def fit_band(rows, H):
