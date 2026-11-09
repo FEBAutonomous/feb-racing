@@ -142,8 +142,17 @@ class Perception:
         self._conf = conf
         if self.blobs and self.image_width:
             tol = self.p["match_px_frac"] * self.image_width
+            fx = (self.image_width / 2.0) / math.tan(math.radians(self.p["camera_hfov_deg"]) / 2.0)
+            def size_ok(i, b):
+                """a detector box (one with a confidence) must be about as tall as a cone at that range:
+                0.33 m for the big orange ones, 0.22 m for the small; a factor two either way is allowed"""
+                if len(b) <= 6:
+                    return True
+                rng = max(0.3, math.hypot(clusters[i][0] - self.p["camera_ahead"], clusters[i][1] - self.p["camera_lateral"]))
+                expect = fx * (0.33 if b[0] == ORANGE else 0.22) / rng
+                return 0.5 <= (b[3] - b[2]) / expect <= 2.0
             pairs = sorted((abs(b[1] - cols[i]), i, k) for i in range(n) if not math.isnan(cols[i])
-                           for k, b in enumerate(self.blobs) if abs(b[1] - cols[i]) < tol)
+                           for k, b in enumerate(self.blobs) if abs(b[1] - cols[i]) < tol and size_ok(i, b))
             done = set()
             for d, i, k in pairs:
                 if i in done or k in taken:

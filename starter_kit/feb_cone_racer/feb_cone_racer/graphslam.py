@@ -55,7 +55,9 @@ class GraphSLAM:
             return self.colour_override
         if len(self.votes) == 0:
             return np.zeros(0, dtype=int)
-        return np.argmax(self.votes[:, 1:], axis=1) + 1
+        c = np.argmax(self.votes[:, 1:], axis=1) + 1
+        c[self.votes[:, 1:].sum(axis=1) <= 0.0] = UNKNOWN      # never coloured by the camera: unknown, not "blue" (argmax of zeros)
+        return c
 
     @property
     def seen(self):
@@ -91,7 +93,7 @@ class GraphSLAM:
             X, Y = [], []
             for c in np.unique(colour):
                 zi = np.flatnonzero(colour == c)
-                li = np.arange(len(lcol)) if c == UNKNOWN else np.flatnonzero(lcol == c)
+                li = np.arange(len(lcol)) if c == UNKNOWN else np.flatnonzero((lcol == c) | (lcol == UNKNOWN))   # an uncoloured landmark matches any colour
                 if not len(zi) or not len(li):
                     continue
                 d = np.linalg.norm(zz[zi][:, None, :] - self.lhat[li][None, :, :], axis=2)
@@ -130,7 +132,7 @@ class GraphSLAM:
         lcol = self.colour
         cands = []
         for i in range(n):
-            li = np.arange(len(lcol)) if colour[i] == UNKNOWN else np.flatnonzero(lcol == colour[i])
+            li = np.arange(len(lcol)) if colour[i] == UNKNOWN else np.flatnonzero((lcol == colour[i]) | (lcol == UNKNOWN))
             if len(li):
                 cands.append(self.lhat[li] - z_rel[i])
         if not cands:
@@ -231,12 +233,13 @@ class GraphSLAM:
         keep = self.seen >= min_seen
         lhat, votes, count = self.lhat[keep], self.votes[keep], self.count[keep]
         col = np.argmax(votes[:, 1:], axis=1) + 1
+        col[votes[:, 1:].sum(axis=1) <= 0.0] = UNKNOWN
         merged = np.ones(len(lhat), dtype=bool)
         for i in range(len(lhat)):
             if not merged[i]:
                 continue
             for j in range(i + 1, len(lhat)):
-                if merged[j] and col[i] == col[j] and np.linalg.norm(lhat[i] - lhat[j]) < 0.5 * self.new_landmark_dist + 0.2:
+                if merged[j] and (col[i] == col[j] or col[i] == UNKNOWN or col[j] == UNKNOWN) and np.linalg.norm(lhat[i] - lhat[j]) < 0.5 * self.new_landmark_dist + 0.2:
                     wi, wj = count[i], count[j]
                     lhat[i] = (wi * lhat[i] + wj * lhat[j]) / (wi + wj + 1e-9)
                     votes[i] += votes[j]

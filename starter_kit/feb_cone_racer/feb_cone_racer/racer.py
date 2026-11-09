@@ -1073,11 +1073,19 @@ class Racer(Node):
         # the colour as voted (the track builder's repaint of the orange start cones to their side is for
         # the boundaries, not for the map people look at), and only landmarks seen at least twice
         votes = self.slam.votes
-        colours = (np.argmax(votes[:, 1:], axis=1) + 1) if len(votes) else np.zeros(0, dtype=int)
         counts = self.slam.count
-        for i, ((x, y), c) in enumerate(zip(self.slam.lhat, colours)):
+        shown = getattr(self, "_shown_colour", {})
+        self._shown_colour = shown
+        for i, (x, y) in enumerate(self.slam.lhat):
             if i < len(counts) and counts[i] < 2:
                 continue
+            v = votes[i, 1:] if i < len(votes) else np.zeros(3)
+            c = int(np.argmax(v)) + 1 if v.sum() > 0.0 else UNKNOWN     # grey until the camera has coloured it
+            # hysteresis: once shown, a colour only flips when the challenger leads by a full vote
+            prev = shown.get(i)
+            if prev not in (None, UNKNOWN) and c != UNKNOWN and prev != c and v[c - 1] - v[prev - 1] < 1.0:
+                c = prev
+            shown[i] = c
             q = Pose()
             q.position.x, q.position.y, q.orientation.w = float(x), float(y), float(c)
             arr.poses.append(q)

@@ -57,7 +57,20 @@ class CnnPerception(Perception):
                 b = (xyxy[i] - [left, top, left, top]) / s
                 x0, y0, x1, y1 = [float(np.clip(v, 0, w if k % 2 == 0 else h)) for k, v in enumerate(b)]
                 dets.append((int(classes[i]), float(scores[i]), x0, y0, x1, y1))
-        self.detections = dets
+        # physics before trust: a cone stands on the floor (its bottom is below the floor line), is taller
+        # than it is wide within reason, and is not a speck. Legs, bags and far clutter mostly fail here.
+        floor = self.p["band_floor"] * h
+        good = []
+        for c, conf, x0, y0, x1, y1 in dets:
+            bw, bh = x1 - x0, y1 - y0
+            if y1 < floor or bh < 10 or bw < 5:
+                continue
+            if not 0.35 <= bw / max(bh, 1e-6) <= 1.3:
+                continue
+            good.append((c, conf, x0, y0, x1, y1))
+        self.detections = good
+        dets = good
         # the blob list Perception.assign expects: colour, column, top row, bottom row, area, dim.
         # dim stays False (the detector already judged it is a cone); confidence rides along as a 7th item
         self.blobs = [(CLASS_COLOUR.get(c, BLUE), (x0 + x1) / 2.0, y0, y1, (x1 - x0) * (y1 - y0), False, conf) for c, conf, x0, y0, x1, y1 in dets]
+        self.image_height = h
