@@ -230,6 +230,8 @@ class Racer(Node):
             self.delta += (self.steer - self.delta) * min(1.0, 0.1 / 0.25)
 
     def on_image(self, msg):
+        if self.p["detector"] == "none":          # lidar only: every cone unknown, the camera ignored (mapping test)
+            return
         self.perception.on_image(msg)
         dets = getattr(self.perception, "detections", None)
         if dets is not None:
@@ -311,6 +313,9 @@ class Racer(Node):
         # cones for the map: every coloured cone within range gives a position edge; only a
         # colour the camera confirmed this scan carries a full vote for the landmark's colour
         obs = [(x, y, c, w) for x, y, c, w in cones if math.hypot(x, y) < self.p["slam_range"]]
+        # (lidar-only clusters are NOT admitted: on the UAB plaza they tripled the map with bench legs, posts
+        # and drift duplicates, 51 -> 192 landmarks for 62 cones; the camera's confirmation is the filter.
+        # detector:=none maps them anyway, as a diagnostic of the mapper alone: 123 "cones" there.)
         cy, sy = math.cos(self.yaw), math.sin(self.yaw)
         z_rel = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, c, w in obs]).reshape(-1, 2)
         colours = np.array([c for _, _, c, _ in obs], dtype=int)
@@ -1096,8 +1101,11 @@ class Racer(Node):
                 continue
             v = votes[i, 1:] if i < len(votes) else np.zeros(3)
             c = int(np.argmax(v)) + 1 if v.sum() > 0.0 else UNKNOWN     # grey until the camera has coloured it
-            # (the track builder's side repair is not shown here: on a hand-driven lap the "path" is not the
-            # track's middle and the repair was wrong more often than the votes, UAB bag 2026-11-08)
+            # a cone the camera never coloured takes its side from the driven path once the map is closed
+            # (camera votes are never overridden by the path: on a hand-driven lap the path is not the middle)
+            rep = self.slam.colour_override
+            if c == UNKNOWN and rep is not None and i < len(rep) and rep[i] in (BLUE, YELLOW):
+                c = int(rep[i])
             # hysteresis: once shown, a colour only flips when the challenger leads by a full vote
             prev = shown.get(i)
             if prev not in (None, UNKNOWN) and c != UNKNOWN and prev != c and v[c - 1] - v[prev - 1] < 1.0:

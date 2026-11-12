@@ -33,7 +33,7 @@ def racer_files(context):
     detector = LaunchConfiguration("detector").perform(context)
     if detector:
         overrides["detector"] = detector
-    if detector == "cnn":
+    if detector in ("cnn", "none"):
         # the detector colours what the camera sees; the geometric guesses (a near uncoloured cone takes its
         # side, a cone beside the car is overridden to its side) were crutches for the thresholds and on a
         # narrow test track they fire constantly and mislabel, so they are off. Unseen cones stay unknown.
