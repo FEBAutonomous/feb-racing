@@ -1,0 +1,53 @@
+{
+ "schema": 1,
+ "id": "20261029-121929-athena",
+ "event": "practice",
+ "team": "athena",
+ "image": "ghcr.io/febautonomous/feb-devkit:latest",
+ "image_digest": "ghcr.io/febautonomous/feb-devkit@sha256:856526ce04a8abeae2044079ec6e0e843d5f8e608a67019af97d9fe501345757",
+ "track": "loop",
+ "mode": "time-attack",
+ "rules": {
+  "laps": 10,
+  "warmup_laps": 1,
+  "collision_penalty_s": 10.0,
+  "max_collisions": 10,
+  "timeout_s": 300.0
+ },
+ "started_at": "2026-10-29T19:19:29+00:00",
+ "duration_s": 236.36,
+ "status": "finished",
+ "laps_completed": 11,
+ "real_time_factor": 0.83,
+ "warmup_s": 17.8748,
+ "lap_times": [
+  17.392,
+  17.325,
+  17.344,
+  17.346,
+  17.327,
+  17.434,
+  17.353,
+  17.823,
+  17.34,
+  17.368
+ ],
+ "collisions": 0,
+ "collision_times": [],
+ "penalty_s": 0.0,
+ "total_s": 174.053,
+ "best_lap_s": 17.325,
+ "restricted_subscribers": {},
+ "verified": false,
+ "runner": "Sansevieria",
+ "error": null,
+ "driver": {
+  "name": "my_driver",
+  "kind": "walls",
+  "stack": "ros2 launch my_driver drive.launch.py mode:=trackdrive",
+  "adapter": "",
+  "packages": [
+   "my_driver"
+  ]
+ }
+}
