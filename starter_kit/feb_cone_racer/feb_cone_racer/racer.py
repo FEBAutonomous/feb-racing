@@ -35,7 +35,7 @@ from .graphslam import GraphSLAM
 from .params import RACE
 from .perception import BLUE, ORANGE, UNKNOWN, YELLOW, Perception
 from .raceline import min_curvature, speed_plan
-from .track import build_track, repair_by_path, track_from_rungs
+from .track import side_of_path, build_track, repair_by_path, track_from_rungs
 from .vehicle import AXLE_TO_LIDAR, WHEEL_SPEED_PER_THROTTLE, BodySpeed
 
 try:                                     # the team's cone ordering, if its package is in the stack
@@ -73,6 +73,14 @@ DEFAULTS = dict(
     # slam
     keyframe_dist=0.4, slam_range=6.0, loc_range=6.0, loc_corridor=2.5, dx_weight=2.0, z_weight=1.0, new_landmark_dist=0.6, icp_gate=1.5,
     solve_every=3, min_lap_length=15.0, order_timeout=10.0, closure_landmarks=10, lap_close_dist=2.0, min_seen=2, icp_min_matches=5, snap_radius=10.0, snap_gate=6.0,
+    # lidar-only cones (the camera never coloured them, typically cones the car hugs): admitted to the map when they are
+    # isolated cone-sized clusters within lidar_cone_range, seen at lidar_cone_keyframes keyframes in the same place, and
+    # kept at closure only with lidar_min_seen sightings; their colour comes from the side of the driven path. 0 = off
+    lidar_cone_range=0.0, lidar_cone_keyframes=3, lidar_min_seen=4, cone_isolation=0.45,
+    merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
+    odom_scale=1.0,           # wheel-speed distance scale on the mapping lap (1.0 until the 10 m roll is measured)
+    camera_only_min_seen=0,   # with the lidar-only admission on: a camera-coloured landmark the lidar never confirmed needs this many sightings (0 = off)
+    freeze_dump="",           # debug: write every landmark (position, votes, count, side of the path) to this JSON file at closure
     # racing: where the car is
     loc_gain_along=0.3,       # share of the map match's correction taken along the car's heading, per scan
     loc_gain_across=0.5,      # and across it
@@ -139,6 +147,7 @@ class Racer(Node):
         self.since_key = np.zeros(2)
         self.since_key_dist = 0.0
         self.keyframes = 0
+        self.kf_log = []                 # (scan time, heading) of every keyframe; the solved positions are slam.xhat[1:]
         self.mode = "MAPPING"
         self.track = None
         self.raceline = None             # (N,2)
@@ -303,7 +312,7 @@ class Racer(Node):
         # wheels and the body agree, and a car stopped against a cone must not map on)
         self.odo_speed = float(np.clip(self.speed, self.odo_speed - 6.0 * dt, self.odo_speed + 4.0 * dt))
         moving_now = self.prev_clusters is None or self.scene_moving(msg, peek=True)
-        ds = self.odo_speed * dt if moving_now else 0.0
+        ds = self.odo_speed * dt * p["odom_scale"] if moving_now else 0.0
         dx = np.array([ds * math.cos(self.yaw), ds * math.sin(self.yaw)])
         self.pose = self.pose + dx
         self.travelled += ds
@@ -320,6 +329,13 @@ class Racer(Node):
         z_rel = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, c, w in obs]).reshape(-1, 2)
         colours = np.array([c for _, _, c, _ in obs], dtype=int)
         weights = np.array([w for _, _, _, w in obs], dtype=float)
+        # lidar-only cone candidates: isolated clusters near the car (see lidar_cone_range); GraphSLAM admits them
+        # once they have persisted over a few keyframes, so clutter and specks stay out
+        ghosts = np.zeros((0, 2))
+        if p["lidar_cone_range"] > 0.0:
+            iso = getattr(self.perception, "unknown_isolated", [])
+            ghosts = np.array([[cy * x - sy * y, sy * x + cy * y] for (x, y), ok in zip(self.perception.unknown, iso)
+                               if ok and 0.3 < math.hypot(x, y) < p["lidar_cone_range"]]).reshape(-1, 2)
 
         moving = self.scene_moving(msg)
         # "cones in view" counts what the lidar sees, coloured or not: at a hairpin the camera can
@@ -333,7 +349,7 @@ class Racer(Node):
             steer, throttle = self.follow_rungs(clusters, dt, p["order_timeout"]) or self.follow_local(clusters, cones, dt)
             self.ordering_step()
         elif self.mode == "MAPPING":
-            self.mapping_step(z_rel, colours, weights)
+            self.mapping_step(z_rel, colours, weights, ghosts)
             if len(self.slam.lhat) >= 4:
                 self.pub_map.publish(self.map_message())      # the growing map, every scan: the live ordering starts at the car
             local = self.follow_rungs(clusters, dt)
@@ -405,7 +421,7 @@ class Racer(Node):
     # ------------------------------------------------------------ mapping
     # ------------------------------------------------------------ mapping
 
-    def mapping_step(self, z_rel, colours, weights):
+    def mapping_step(self, z_rel, colours, weights, ghosts=None):
         p = self.p
         if self.start is None:
             self.start = (self.pose.copy(), self.yaw)
@@ -437,7 +453,10 @@ class Racer(Node):
             spacing = float(np.median(dd.min(axis=1)))
             self.cone_spacing = spacing if self.cone_spacing is None else 0.8 * self.cone_spacing + 0.2 * spacing
             self.slam.new_landmark_dist = float(np.clip(0.45 * self.cone_spacing, 0.25, p["new_landmark_dist"]))
-        self.slam.add(self.since_key, z_rel, colours, weights)
+        self.slam.ghost_keyframes = int(p["lidar_cone_keyframes"])
+        self.slam.merge_radius = float(p["merge_radius"])
+        self.slam.add(self.since_key, z_rel, colours, weights, ghosts)
+        self.kf_log.append((float(self.last_t), float(self.yaw), float(self.since_key[0]), float(self.since_key[1])))   # per keyframe, for the freeze dump
         self.keyframes += 1
         self.since_key = np.zeros(2)
         self.since_key_dist = 0.0
@@ -467,12 +486,42 @@ class Racer(Node):
         (the car keeps following the local line meanwhile); without the service, or after
         `order_timeout`, the built-in boundary walk takes over."""
         p = self.p
-        self.slam.freeze(int(p["min_seen"]))
+        self.slam.freeze(int(p["min_seen"]), lidar_min_seen=int(p["lidar_min_seen"]), camera_only_min_seen=int(p["camera_only_min_seen"]))
+        self._shown_colour = {}          # the refile renumbers the landmarks: the colour hysteresis of the lap no longer applies
         if getattr(self.slam, "refiled", None):
-            self.get_logger().info("map closed: sightings refiled through the solved poses, %d landmarks during the lap -> %d; seen >= %d: %d; after merging duplicates: %d"
-                                   % (*self.slam.refiled, int(p["min_seen"]), self.slam.freeze_counts[1], self.slam.freeze_counts[2]))
+            self.get_logger().info("map closed: sightings refiled through the solved poses, %d landmarks during the lap -> %d; seen >= %d: %d; after merging duplicates: %d (%d by distance, %d never seen together)"
+                                   % (*self.slam.refiled, int(p["min_seen"]), self.slam.freeze_counts[1], self.slam.freeze_counts[2], *self.slam.merge_log))
         self.lap_times.append(self.last_t - self.lap_start_t)
         self.slam.colour_override = repair_by_path(self.slam.lhat, self.slam.colour, self.slam.xhat)
+        # a cone the camera never coloured takes its side whatever its distance from the path (the repair only
+        # recolours cones a clear track-width away; a hugged lidar-only cone sits right beside the path)
+        col, rep, path = self.slam.colour, self.slam.colour_override, self.slam.xhat
+        if len(path) >= 8:
+            left_is_blue = True
+            voted = (col == BLUE) | (col == YELLOW)
+            if voted.sum() >= 4:
+                sides_v = np.array([side_of_path(path, q) for q in self.slam.lhat])
+                agree = np.sum(((col == BLUE) & (sides_v > 0)) | ((col == YELLOW) & (sides_v < 0)))
+                left_is_blue = agree >= 0.5 * voted.sum()
+            weak = self.slam.votes[:, 1:].max(axis=1) < 1.0          # one doubtful reading at most
+            for i in np.flatnonzero((col == UNKNOWN) | weak):
+                d = side_of_path(path, self.slam.lhat[i])
+                if rep[i] == UNKNOWN or (weak[i] and abs(d) > 0.3):
+                    rep[i] = (BLUE if d > 0 else YELLOW) if left_is_blue else (YELLOW if d > 0 else BLUE)
+        if p["freeze_dump"]:
+            try:
+                import json
+                dump = [{"x": float(x), "y": float(y), "votes": [float(v) for v in self.slam.votes[i, 1:]], "count": int(self.slam.count[i]),
+                         "colour": int(col[i]), "repaired": int(rep[i]), "side": float(side_of_path(path, self.slam.lhat[i])) if len(path) >= 8 else 0.0,
+                         "lidar_seen": int(self.slam.lidar_seen[i]) if i < len(self.slam.lidar_seen) else -1,
+                         "kf": sorted(int(k) for k in self.slam.kfs[i]) if hasattr(self.slam, "kfs") and i < len(self.slam.kfs) else []}
+                        for i, (x, y) in enumerate(self.slam.lhat)]
+                json.dump({"landmarks": dump, "path": self.slam.xhat.tolist(), "kf": self.kf_log, "ghosts_left": [{"x": float(g["pos"][0]), "y": float(g["pos"][1]), "n": int(g["n"])} for g in self.slam.ghosts],
+                           "dropped": getattr(self.slam, "dropped", []),
+                           "obs": [[int(k), zr.tolist(), [int(c) for c in cc], [float(w) for w in ww]] for k, zr, cc, ww in self.slam.obs],
+                           "new_landmark_dist": float(self.slam.new_landmark_dist)}, open(p["freeze_dump"], "w"))
+            except Exception as e:                  # noqa: BLE001
+                self.get_logger().warn("freeze dump failed: %s" % e)
         self.map_closed_t = time.time()
         if self.order_client is not None and self.order_client.service_is_ready():
             req = OrderCones.Request()
@@ -1104,11 +1153,13 @@ class Racer(Node):
             # a cone the camera never coloured takes its side from the driven path once the map is closed
             # (camera votes are never overridden by the path: on a hand-driven lap the path is not the middle)
             rep = self.slam.colour_override
-            if c == UNKNOWN and rep is not None and i < len(rep) and rep[i] in (BLUE, YELLOW):
-                c = int(rep[i])
-            # hysteresis: once shown, a colour only flips when the challenger leads by a full vote
+            repaired = rep is not None and i < len(rep) and rep[i] in (BLUE, YELLOW) and (c == UNKNOWN or v.max() < 1.0)
+            if repaired:
+                c = int(rep[i])                 # ...and so does a cone the camera coloured only once, doubtfully
+            # hysteresis: once shown, a colour only flips when the challenger leads by a full vote (not for a
+            # colour the closed map assigned from the path: that one is final)
             prev = shown.get(i)
-            if prev not in (None, UNKNOWN) and c != UNKNOWN and prev != c and v[c - 1] - v[prev - 1] < 1.0:
+            if not repaired and prev not in (None, UNKNOWN) and c != UNKNOWN and prev != c and v[c - 1] - v[prev - 1] < 1.0:
                 c = prev
             shown[i] = c
             q = Pose()

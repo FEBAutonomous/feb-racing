@@ -106,7 +106,7 @@ class Perception:
             cur.append(i)
         if cur:
             groups.append(cur)
-        out = []
+        out, iso, small = [], [], []
         for g in groups:
             if len(g) > self.p["cone_max_points"]:
                 continue
@@ -114,6 +114,17 @@ class Perception:
             if math.hypot(px.max() - px.min(), py.max() - py.min()) > self.p["cone_max_width"]:
                 continue
             out.append((float(px.mean()), float(py.mean())))
+            small.extend(g)
+        # isolation: a cone stands clear of structure (a bench, a planter, a wall with a post); another cone-sized
+        # cluster next to it is allowed (cones touching at a drain, the big gate cones in pairs). Structure = every
+        # return within reach that is not part of a cone-sized cluster, including the ones beyond max_range
+        radius = float(self.p.get("cone_isolation", 0.45))
+        struct = np.isfinite(ranges) & (ranges > 0.1) & (ranges < self.p["max_range"] + 1.0)
+        struct[small] = False
+        ax, ay = xs[struct], ys[struct]
+        for cx, cy in out:
+            iso.append(int(np.sum((ax - cx) ** 2 + (ay - cy) ** 2 < radius * radius)) <= 2)
+        self.cluster_isolated = iso
         return out
 
     # ------------------------------------------------------------ fusion
@@ -225,4 +236,6 @@ class Perception:
                 result.append((x, y, colour, weight))
         self.prev = out
         self.unknown = [(x, y) for x, y, colour, _, _ in out if colour is None]
+        iso = getattr(self, "cluster_isolated", None) or [False] * len(out)
+        self.unknown_isolated = [iso[i] for i, (x, y, colour, _, _) in enumerate(out) if colour is None]   # see racer.on_scan
         return result

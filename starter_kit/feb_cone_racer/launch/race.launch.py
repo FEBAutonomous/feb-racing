@@ -43,6 +43,11 @@ def racer_files(context):
         # ahead in the camera's view; a venue profile's short HSV range (clutter at range) does not apply
         overrides["max_range"] = 5.0
         overrides["keyframe_dist"] = 0.2       # twice the sightings per cone: a small far cone is in view for few keyframes
+    if detector == "cnn":
+        # cones the car hugs never enter the camera's view: the lidar maps them (isolated clusters within 2 m that
+        # persist over keyframes), coloured by the side of the driven path at closure. racer.py lidar_cone_range
+        overrides["lidar_cone_range"] = float(os.environ.get("FEB_LIDAR_CONE_RANGE", "3.5"))
+        overrides["camera_only_min_seen"] = 5  # a cone only the camera ever placed needs five sightings (a leg, a far cluster with a cone's colour)
     model = LaunchConfiguration("detector_model").perform(context)
     if model:
         overrides["detector_model"] = model
