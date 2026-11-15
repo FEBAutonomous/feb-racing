@@ -245,19 +245,6 @@ class Perception:
         self.unknown_isolated = [iso[i] for i, (x, y, colour, _, _) in enumerate(out) if colour is None]   # see racer.on_scan
         wid = getattr(self, "cluster_width", None) or [0.0] * len(out)
         self.unknown_width = [wid[i] for i, (x, y, colour, _, _) in enumerate(out) if colour is None]
-        # a big cluster is a big cone, and big cones are orange: the camera's blue or yellow on it is the bearing match
-        # taking the small cone behind it (the gate pair at the start was voted blue that way)
-        big = float(self.p.get("big_cone_width", 0.0))
-        if big > 0.0:
-            result = [(x, y, (ORANGE if (wid[k] >= big and colour != ORANGE) else colour), (max(w, 0.5) if wid[k] >= big else w))
-                      for k, (x, y, colour, w) in self._with_index(out, result)]
+        # (a wide cluster is a big cone, but big cones come in blue too at the start line, so width says nothing about
+        # the colour: the camera does. Width only decides where a wide cluster may count as a cone: racer.on_scan)
         return result
-
-    @staticmethod
-    def _with_index(out, result):
-        """result in cluster order with the cluster index (result keeps the coloured clusters, in order)."""
-        k, pairs = 0, []
-        coloured = [i for i, (x, y, colour, _, _) in enumerate(out) if colour is not None]
-        for idx, r in zip(coloured, result):
-            pairs.append((idx, r))
-        return pairs

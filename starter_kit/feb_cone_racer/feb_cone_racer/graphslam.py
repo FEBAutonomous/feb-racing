@@ -66,6 +66,10 @@ class GraphSLAM:
             return np.zeros(0, dtype=int)
         c = np.argmax(self.votes[:, 1:], axis=1) + 1
         c[self.votes[:, 1:].sum(axis=1) <= 0.0] = UNKNOWN      # never coloured by the camera: unknown, not "blue" (argmax of zeros)
+        # orange on a single doubtful reading (one wide lidar cluster, one far camera box) is not orange: the gate cones
+        # are seen wide and orange scan after scan. Below a full vote the cone is uncoloured and takes its side
+        weak_orange = (c == ORANGE) & (self.votes[:, 3] < 1.0) & (self.votes[:, 1:3].sum(axis=1) <= 0.0)
+        c[weak_orange] = UNKNOWN
         return c
 
     @property
