@@ -78,6 +78,9 @@ DEFAULTS = dict(
     # kept at closure only with lidar_min_seen sightings; their colour comes from the side of the driven path. 0 = off
     lidar_cone_range=0.0, lidar_cone_keyframes=3, lidar_min_seen=4, cone_isolation=0.45,
     merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
+    max_path_dist=0.0,        # m, at closure a landmark farther than this from the driven path is dropped (0 = off; the car config sets it)
+    gate_radius=3.0,          # m from the lap's start within which big (orange) cones are expected; wide clusters elsewhere are not cones
+    big_cone_width=0.25,      # m, a lidar cluster at least this wide is a big (orange) cone: small cones show 0.05-0.1 m at the lidar height (two merged < 0.25), big ones 0.3-0.4 (0 = off)
     odom_scale=1.0,           # wheel-speed distance scale on the mapping lap (1.0 until the 10 m roll is measured)
     camera_only_min_seen=0,   # with the lidar-only admission on: a camera-coloured landmark the lidar never confirmed needs this many sightings (0 = off)
     freeze_dump="",           # debug: write every landmark (position, votes, count, side of the path) to this JSON file at closure
@@ -322,6 +325,8 @@ class Racer(Node):
         # cones for the map: every coloured cone within range gives a position edge; only a
         # colour the camera confirmed this scan carries a full vote for the landmark's colour
         obs = [(x, y, c, w) for x, y, c, w in cones if math.hypot(x, y) < self.p["slam_range"]]
+        if p["big_cone_width"] > 0.0 and self.start is not None and np.linalg.norm(self.pose - self.start[0]) >= p["gate_radius"]:
+            obs = [(x, y, c, w) for x, y, c, w in obs if c != ORANGE]      # a wide cluster away from the start is not a cone (see gate_radius)
         # (lidar-only clusters are NOT admitted: on the UAB plaza they tripled the map with bench legs, posts
         # and drift duplicates, 51 -> 192 landmarks for 62 cones; the camera's confirmation is the filter.
         # detector:=none maps them anyway, as a diagnostic of the mapper alone: 123 "cones" there.)
@@ -331,11 +336,17 @@ class Racer(Node):
         weights = np.array([w for _, _, _, w in obs], dtype=float)
         # lidar-only cone candidates: isolated clusters near the car (see lidar_cone_range); GraphSLAM admits them
         # once they have persisted over a few keyframes, so clutter and specks stay out
-        ghosts = np.zeros((0, 2))
+        ghosts = np.zeros((0, 2)); ghost_colour = np.zeros(0, dtype=int)
         if p["lidar_cone_range"] > 0.0:
             iso = getattr(self.perception, "unknown_isolated", [])
-            ghosts = np.array([[cy * x - sy * y, sy * x + cy * y] for (x, y), ok in zip(self.perception.unknown, iso)
-                               if ok and 0.3 < math.hypot(x, y) < p["lidar_cone_range"]]).reshape(-1, 2)
+            wid = getattr(self.perception, "unknown_width", [0.0] * len(iso))
+            # big clusters are the start gate's big cones, which stand at the start line and nowhere else (the rules):
+            # within gate_radius of where the lap began they are orange cones, elsewhere a wide thing is not a cone
+            near_gate = self.start is None or np.linalg.norm(self.pose - self.start[0]) < p["gate_radius"]
+            picked = [(x, y, w) for (x, y), ok, w in zip(self.perception.unknown, iso, wid)
+                      if ok and 0.3 < math.hypot(x, y) < p["lidar_cone_range"] and (w < p["big_cone_width"] or (near_gate and math.hypot(x, y) < p["gate_radius"]))]
+            ghosts = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, w in picked]).reshape(-1, 2)
+            ghost_colour = np.array([ORANGE if (p["big_cone_width"] > 0.0 and w >= p["big_cone_width"]) else UNKNOWN for x, y, w in picked], dtype=int)
 
         moving = self.scene_moving(msg)
         # "cones in view" counts what the lidar sees, coloured or not: at a hairpin the camera can
@@ -349,7 +360,7 @@ class Racer(Node):
             steer, throttle = self.follow_rungs(clusters, dt, p["order_timeout"]) or self.follow_local(clusters, cones, dt)
             self.ordering_step()
         elif self.mode == "MAPPING":
-            self.mapping_step(z_rel, colours, weights, ghosts)
+            self.mapping_step(z_rel, colours, weights, ghosts, ghost_colour)
             if len(self.slam.lhat) >= 4:
                 self.pub_map.publish(self.map_message())      # the growing map, every scan: the live ordering starts at the car
             local = self.follow_rungs(clusters, dt)
@@ -421,7 +432,7 @@ class Racer(Node):
     # ------------------------------------------------------------ mapping
     # ------------------------------------------------------------ mapping
 
-    def mapping_step(self, z_rel, colours, weights, ghosts=None):
+    def mapping_step(self, z_rel, colours, weights, ghosts=None, ghost_colour=None):
         p = self.p
         if self.start is None:
             self.start = (self.pose.copy(), self.yaw)
@@ -455,7 +466,7 @@ class Racer(Node):
             self.slam.new_landmark_dist = float(np.clip(0.45 * self.cone_spacing, 0.25, p["new_landmark_dist"]))
         self.slam.ghost_keyframes = int(p["lidar_cone_keyframes"])
         self.slam.merge_radius = float(p["merge_radius"])
-        self.slam.add(self.since_key, z_rel, colours, weights, ghosts)
+        self.slam.add(self.since_key, z_rel, colours, weights, ghosts, ghost_colour)
         self.kf_log.append((float(self.last_t), float(self.yaw), float(self.since_key[0]), float(self.since_key[1])))   # per keyframe, for the freeze dump
         self.keyframes += 1
         self.since_key = np.zeros(2)
@@ -488,6 +499,13 @@ class Racer(Node):
         p = self.p
         self.slam.freeze(int(p["min_seen"]), lidar_min_seen=int(p["lidar_min_seen"]), camera_only_min_seen=int(p["camera_only_min_seen"]))
         self._shown_colour = {}          # the refile renumbers the landmarks: the colour hysteresis of the lap no longer applies
+        if p["max_path_dist"] > 0.0 and len(self.slam.xhat) >= 8:
+            # the car drove between the cones, so every cone stands within half a track width of its path; what stands
+            # farther out (a planter, people at the start, a bollard that took a cone's colour) is not on the track
+            far = np.array([abs(side_of_path(self.slam.xhat, q)) > p["max_path_dist"] for q in self.slam.lhat])
+            if far.any():
+                self.get_logger().info("map closed: %d landmarks farther than %.1f m from the driven path dropped" % (int(far.sum()), p["max_path_dist"]))
+                self.slam.drop(~far)
         if getattr(self.slam, "refiled", None):
             self.get_logger().info("map closed: sightings refiled through the solved poses, %d landmarks during the lap -> %d; seen >= %d: %d; after merging duplicates: %d (%d by distance, %d never seen together)"
                                    % (*self.slam.refiled, int(p["min_seen"]), self.slam.freeze_counts[1], self.slam.freeze_counts[2], *self.slam.merge_log))

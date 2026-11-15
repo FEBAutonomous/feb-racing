@@ -181,7 +181,7 @@ class GraphSLAM:
 
     # ------------------------------------------------------------ building the graph
 
-    def add(self, dx, z_rel, colour, weight=None, ghosts=None):
+    def add(self, dx, z_rel, colour, weight=None, ghosts=None, ghost_colour=None):
         """One keyframe: the car moved dx (world frame) since the last one and now sees cones
         at z_rel (world orientation, relative to the car) with colours `colour`; `weight` is how
         much each colour reading counts (1 camera-confirmed, less for a remembered colour).
@@ -190,6 +190,7 @@ class GraphSLAM:
         dx, z_rel, colour = np.asarray(dx, float), np.asarray(z_rel, float).reshape(-1, 2), np.asarray(colour, int)
         weight = np.ones(len(colour)) if weight is None else np.asarray(weight, float)
         ghosts = np.zeros((0, 2)) if ghosts is None else np.asarray(ghosts, float).reshape(-1, 2)
+        ghost_colour = np.full(len(ghosts), UNKNOWN) if ghost_colour is None else np.asarray(ghost_colour, int)   # ORANGE for a big cluster
         prev = self.x[-1]
         kf = len(self.x)
         self.obs.append((kf, z_rel.copy(), colour.copy(), weight.copy()))   # keyframe index into xhat, for refile()
@@ -207,18 +208,20 @@ class GraphSLAM:
         zw = zw @ R.T + t
         self.xhat[-1] = R @ guess + t
         if len(ghosts):
-            z_rel, colour, weight, ghost_rel = self._admit_ghosts(kf, z_rel, colour, weight, ghosts, R, t)
+            z_rel, colour, weight, ghost_rel = self._admit_ghosts(kf, z_rel, colour, weight, ghosts, R, t, ghost_colour)
             zw = np.vstack([zw, ghost_rel + self.xhat[-1]]) if len(ghost_rel) else zw
         self.last_matched = []                  # landmarks this keyframe was associated with (loop closure looks at it)
         lcol = self.colour if len(self.lhat) else np.zeros(0, dtype=int)
-        for i in range(len(zw)):
+        taken = np.zeros(len(self.lhat), dtype=bool)        # two cones in one scan are two cones: one observation per landmark per keyframe
+        order = np.argsort(np.linalg.norm(z_rel, axis=1)) if len(z_rel) else []   # nearest first: the surest associations go first
+        for i in order:
             j = None
             if len(self.lhat):
                 d = np.linalg.norm(self.lhat - zw[i], axis=1)
                 # colour is part of the association: within the gate, the nearest landmark of this colour (or
                 # one not yet coloured); a landmark of another colour standing just as close is a different cone
                 # (cones a metre apart with a few decimetres of pose jitter otherwise swap votes)
-                ok = d < self.new_landmark_dist
+                ok = (d < self.new_landmark_dist) & ~taken
                 if colour[i] != UNKNOWN:
                     ok &= (lcol == colour[i]) | (lcol == UNKNOWN)
                 if ok.any():
@@ -234,26 +237,30 @@ class GraphSLAM:
                 self.lidar_seen = np.append(self.lidar_seen, 0)
                 self.l.append(self.nvars)
                 self.nvars += 2
+                taken = np.append(taken, False)
+            taken[j] = True
             self.votes[j, colour[i]] += weight[i]
             self.count[j] += 1
-            if colour[i] == UNKNOWN:
+            if colour[i] == UNKNOWN or (weight[i] <= 0.3 and colour[i] == ORANGE):     # a lidar-only sighting (a big cluster votes orange, a little)
                 self.lidar_seen[j] += 1
             w = self.z_weight
             self._eq([(self.l[j], w), (self.x[-1], -w)], z_rel[i, 0] * w)
             self._eq([(self.l[j] + 1, w), (self.x[-1] + 1, -w)], z_rel[i, 1] * w)
 
-    def _admit_ghosts(self, kf, z_rel, colour, weight, ghosts, R, t):
+    def _admit_ghosts(self, kf, z_rel, colour, weight, ghosts, R, t, ghost_colour=None):
         """Lidar-only candidates of this keyframe. One within 0.6 of the gate of a landmark is a sighting
         of it (an uncoloured observation: a position edge and a count, no colour vote). The rest go to the
         ghost tracks; a track seen at ghost_keyframes keyframes is promoted: its earlier sightings are
         refiled as observations too, so refile() and freeze() treat the cone like any other."""
         gw = (ghosts + self.xhat[-1])
+        gc = np.full(len(gw), UNKNOWN) if ghost_colour is None else ghost_colour
         extra_rel, extra_col, extra_w = [], [], []
         for i in range(len(gw)):
+            c_i, w_i = (int(gc[i]), 0.3) if gc[i] != UNKNOWN else (UNKNOWN, 0.0)     # a big cluster votes orange, a little
             if len(self.lhat):
                 d = np.linalg.norm(self.lhat - gw[i], axis=1)
                 if d.min() < 0.6 * self.new_landmark_dist:
-                    extra_rel.append(ghosts[i]); extra_col.append(UNKNOWN); extra_w.append(0.0)
+                    extra_rel.append(ghosts[i]); extra_col.append(c_i); extra_w.append(w_i)
                     continue
             hit = None
             for g in self.ghosts:
@@ -261,19 +268,19 @@ class GraphSLAM:
                     hit = g
                     break
             if hit is None:
-                self.ghosts.append({"pos": gw[i].copy(), "n": 1, "last": kf, "sightings": [(kf, ghosts[i].copy())]})
+                self.ghosts.append({"pos": gw[i].copy(), "n": 1, "last": kf, "sightings": [(kf, ghosts[i].copy(), c_i, w_i)]})
                 continue
             n = hit["n"]
             hit["pos"] = (hit["pos"] * n + gw[i]) / (n + 1)
             hit["n"], hit["last"] = n + 1, kf
-            hit["sightings"].append((kf, ghosts[i].copy()))
+            hit["sightings"].append((kf, ghosts[i].copy(), c_i, w_i))
             if hit["n"] >= self.ghost_keyframes:
                 # promoted: this sighting becomes an observation now, the earlier ones are filed to their keyframes
-                extra_rel.append(ghosts[i]); extra_col.append(UNKNOWN); extra_w.append(0.0)
-                for k0, z0 in hit["sightings"][:-1]:
+                extra_rel.append(ghosts[i]); extra_col.append(c_i); extra_w.append(w_i)
+                for k0, z0, c0, w0 in hit["sightings"][:-1]:
                     for j, (k, zr, cc, ww) in enumerate(self.obs):
                         if k == k0:
-                            self.obs[j] = (k, np.vstack([zr, z0]), np.append(cc, UNKNOWN), np.append(ww, 0.0))
+                            self.obs[j] = (k, np.vstack([zr, z0]), np.append(cc, c0), np.append(ww, w0))
                             break
                 self.ghosts = [g for g in self.ghosts if g is not hit]
         # tracks not seen for a while are dropped (a passer-by, a speck)
@@ -314,12 +321,13 @@ class GraphSLAM:
             if k >= len(self.xhat):
                 continue
             world = self.xhat[k] + z_rel
-            for i in range(len(world)):
+            for i in np.argsort(np.linalg.norm(z_rel, axis=1)) if len(z_rel) else []:
                 c = int(colour[i])
                 j = None
                 if pts:
                     P = np.array(pts); d = np.linalg.norm(P - world[i], axis=1)
-                    ok = d < radius
+                    # one sighting per landmark per keyframe: two clusters in one scan are two cones (a gate pair)
+                    ok = (d < radius) & np.array([k not in kf for kf in kfs])
                     if c != UNKNOWN:
                         ok &= (np.array(cols) == c) | (np.array(cols) == UNKNOWN)
                     if ok.any():
@@ -331,7 +339,7 @@ class GraphSLAM:
                 n = counts[j]
                 pts[j] = (pts[j] * n + world[i]) / (n + 1)
                 counts[j] = n + 1
-                if c == UNKNOWN:
+                if c == UNKNOWN or (float(weight[i]) <= 0.3 and c == ORANGE):
                     lseen[j] += 1
                 votes[j][c] += float(weight[i])
                 v = votes[j][1:]
@@ -427,6 +435,17 @@ class GraphSLAM:
         self.freeze_counts = (int(len(keep)), int(keep.sum()), int(merged.sum()))     # before, seen >= min_seen, after merge
         self.merge_log = getattr(self, "merge_log", [0, 0])
         self.frozen = True
+
+    def drop(self, keep):
+        """Keep only the landmarks flagged in `keep` (after freeze: the per-landmark arrays only)."""
+        keep = np.asarray(keep, bool)
+        self.lhat, self.votes, self.count = self.lhat[keep], self.votes[keep], self.count[keep]
+        if len(self.lidar_seen) == len(keep):
+            self.lidar_seen = self.lidar_seen[keep]
+        if hasattr(self, "kfs") and len(self.kfs) == len(keep):
+            self.kfs = [k for k, ok in zip(self.kfs, keep) if ok]
+        if self.colour_override is not None and len(self.colour_override) == len(keep):
+            self.colour_override = self.colour_override[keep]
 
     def localise(self, pose_guess, z_rel, colour, wide=True, subset=None):
         """Correct a dead-reckoned position against the frozen map. Returns the corrected (x, y)

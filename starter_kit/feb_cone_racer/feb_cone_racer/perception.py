@@ -106,15 +106,20 @@ class Perception:
             cur.append(i)
         if cur:
             groups.append(cur)
-        out, iso, small = [], [], []
+        out, iso, small, widths = [], [], [], []
         for g in groups:
             if len(g) > self.p["cone_max_points"]:
                 continue
             px, py = xs[g], ys[g]
-            if math.hypot(px.max() - px.min(), py.max() - py.min()) > self.p["cone_max_width"]:
+            w = math.hypot(px.max() - px.min(), py.max() - py.min())
+            if w > self.p["cone_max_width"]:
                 continue
             out.append((float(px.mean()), float(py.mean())))
+            widths.append(w)
             small.extend(g)
+        # the cluster's width at the lidar's height: a small cone shows 0.05-0.1 m, a big (orange, start gate) cone
+        # 0.25-0.4 m; see big_cone_width
+        self.cluster_width = widths
         # isolation: a cone stands clear of structure (a bench, a planter, a wall with a post); another cone-sized
         # cluster next to it is allowed (cones touching at a drain, the big gate cones in pairs). Structure = every
         # return within reach that is not part of a cone-sized cluster, including the ones beyond max_range
@@ -238,4 +243,21 @@ class Perception:
         self.unknown = [(x, y) for x, y, colour, _, _ in out if colour is None]
         iso = getattr(self, "cluster_isolated", None) or [False] * len(out)
         self.unknown_isolated = [iso[i] for i, (x, y, colour, _, _) in enumerate(out) if colour is None]   # see racer.on_scan
+        wid = getattr(self, "cluster_width", None) or [0.0] * len(out)
+        self.unknown_width = [wid[i] for i, (x, y, colour, _, _) in enumerate(out) if colour is None]
+        # a big cluster is a big cone, and big cones are orange: the camera's blue or yellow on it is the bearing match
+        # taking the small cone behind it (the gate pair at the start was voted blue that way)
+        big = float(self.p.get("big_cone_width", 0.0))
+        if big > 0.0:
+            result = [(x, y, (ORANGE if (wid[k] >= big and colour != ORANGE) else colour), (max(w, 0.5) if wid[k] >= big else w))
+                      for k, (x, y, colour, w) in self._with_index(out, result)]
         return result
+
+    @staticmethod
+    def _with_index(out, result):
+        """result in cluster order with the cluster index (result keeps the coloured clusters, in order)."""
+        k, pairs = 0, []
+        coloured = [i for i, (x, y, colour, _, _) in enumerate(out) if colour is not None]
+        for idx, r in zip(coloured, result):
+            pairs.append((idx, r))
+        return pairs

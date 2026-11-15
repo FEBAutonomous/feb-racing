@@ -9,7 +9,7 @@ from rclpy.serialization import deserialize_message
 from sensor_msgs.msg import LaserScan
 bag, dump, out = sys.argv[1], json.load(open(sys.argv[2])), sys.argv[3]
 path = np.array(dump["path"]); kf = np.array(dump["kf"])            # path[0] is the origin pose, path[k] the k-th keyframe
-kt, kyaw = kf[:, 0], np.unwrap(kf[:, 1])  # (time, heading[, dx, dy]); kpos = path[1:1 + len(kt)]
+kt, kyaw = kf[:, 0], np.unwrap(kf[:, 1]); kpos = path[1:1 + len(kt)]   # kf rows: (time, heading[, dx, dy])
 t_lo, t_hi = kt[0] - 0.5, kt[-1] + 0.5
 r = SequentialReader(); r.open(StorageOptions(uri=bag, storage_id="sqlite3"), ConverterOptions("", ""))
 cands = []; nscan = 0
@@ -31,7 +31,7 @@ while r.has_next():
     c, s = math.cos(yaw), math.sin(yaw)
     for g in groups:
         gx, gy = xs[g], ys[g]
-        if math.hypot(gx.max() - gx.min(), gy.max() - gy.min()) > 0.35 or len(g) < 3: continue
+        if math.hypot(gx.max() - gx.min(), gy.max() - gy.min()) > 0.45 or len(g) < 3: continue
         cx, cy = gx.mean(), gy.mean()
         if int(np.sum((ax - cx) ** 2 + (ay - cy) ** 2 < 0.45 ** 2)) - len(g) > 2: continue
         cands.append((px + c * cx - s * cy, py + s * cx + c * cy, math.hypot(cx, cy), t))
