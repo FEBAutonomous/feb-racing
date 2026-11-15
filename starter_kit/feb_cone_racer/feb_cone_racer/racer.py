@@ -79,7 +79,7 @@ DEFAULTS = dict(
     lidar_cone_range=0.0, lidar_cone_keyframes=3, lidar_min_seen=4, cone_isolation=0.45,
     merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
     max_path_dist=0.0,        # m, at closure a landmark farther than this from the driven path is dropped (0 = off; the car config sets it)
-    gate_radius=3.0,          # m from the lap's start within which big (orange) cones are expected; wide clusters elsewhere are not cones
+    gate_radius=3.5,          # m from the lap's start within which big (orange) cones stand; an orange or wide thing farther out is not a cone
     big_cone_width=0.25,      # m, a lidar cluster at least this wide is a big (orange) cone: small cones show 0.05-0.1 m at the lidar height (two merged < 0.25), big ones 0.3-0.4 (0 = off)
     odom_scale=1.0,           # wheel-speed distance scale on the mapping lap (1.0 until the 10 m roll is measured)
     camera_only_min_seen=0,   # with the lidar-only admission on: a camera-coloured landmark the lidar never confirmed needs this many sightings (0 = off)
@@ -325,12 +325,20 @@ class Racer(Node):
         # cones for the map: every coloured cone within range gives a position edge; only a
         # colour the camera confirmed this scan carries a full vote for the landmark's colour
         obs = [(x, y, c, w) for x, y, c, w in cones if math.hypot(x, y) < self.p["slam_range"]]
-        if p["big_cone_width"] > 0.0 and self.start is not None and np.linalg.norm(self.pose - self.start[0]) >= p["gate_radius"]:
-            obs = [(x, y, c, w) for x, y, c, w in obs if c != ORANGE]      # a wide cluster away from the start is not a cone (see gate_radius)
+        cy, sy = math.cos(self.yaw), math.sin(self.yaw)
+        # big (orange) cones stand at the start line and nowhere else (the rules): an orange cone, or a wide cluster,
+        # farther than gate_radius from where the lap began is not a cone. The cone's own place counts, not the car's:
+        # the gate is seen from five metres on the way out and on the way back in
+        def at_gate(x, y):
+            if self.start is None:
+                return True
+            wx, wy = self.pose[0] + cy * x - sy * y, self.pose[1] + sy * x + cy * y
+            return math.hypot(wx - self.start[0][0], wy - self.start[0][1]) < p["gate_radius"]
+        if p["big_cone_width"] > 0.0:
+            obs = [(x, y, c, w) for x, y, c, w in obs if c != ORANGE or at_gate(x, y)]
         # (lidar-only clusters are NOT admitted: on the UAB plaza they tripled the map with bench legs, posts
         # and drift duplicates, 51 -> 192 landmarks for 62 cones; the camera's confirmation is the filter.
         # detector:=none maps them anyway, as a diagnostic of the mapper alone: 123 "cones" there.)
-        cy, sy = math.cos(self.yaw), math.sin(self.yaw)
         z_rel = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, c, w in obs]).reshape(-1, 2)
         colours = np.array([c for _, _, c, _ in obs], dtype=int)
         weights = np.array([w for _, _, _, w in obs], dtype=float)
@@ -342,9 +350,8 @@ class Racer(Node):
             wid = getattr(self.perception, "unknown_width", [0.0] * len(iso))
             # big clusters are the start gate's big cones, which stand at the start line and nowhere else (the rules):
             # within gate_radius of where the lap began they are orange cones, elsewhere a wide thing is not a cone
-            near_gate = self.start is None or np.linalg.norm(self.pose - self.start[0]) < p["gate_radius"]
             picked = [(x, y, w) for (x, y), ok, w in zip(self.perception.unknown, iso, wid)
-                      if ok and 0.3 < math.hypot(x, y) < p["lidar_cone_range"] and (w < p["big_cone_width"] or (near_gate and math.hypot(x, y) < p["gate_radius"]))]
+                      if ok and 0.3 < math.hypot(x, y) < p["lidar_cone_range"] and (w < p["big_cone_width"] or at_gate(x, y))]
             ghosts = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, w in picked]).reshape(-1, 2)
             ghost_colour = np.array([ORANGE if (p["big_cone_width"] > 0.0 and w >= p["big_cone_width"]) else UNKNOWN for x, y, w in picked], dtype=int)
 
