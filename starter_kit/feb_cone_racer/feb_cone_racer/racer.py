@@ -79,6 +79,10 @@ DEFAULTS = dict(
     lidar_cone_range=0.0, lidar_cone_keyframes=3, lidar_min_seen=4, cone_isolation=0.45,
     merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
     max_path_dist=0.0,        # m, at closure a landmark farther than this from the driven path is dropped (0 = off; the car config sets it)
+    track_repair=True,        # at closure: merge drift duplicates and fill clear gaps along each boundary (repair.py); off = the raw map
+    repair_fill_ratio=1.7,    # a gap of at least this many spacings is a missing cone (or cones)
+    repair_max_fill=3,        # at most this many cones filled into one gap
+    repair_dup_ratio=0.35,    # two cones of one colour closer than this share of the local spacing are one cone (cones can touch at a drain)
     close_within=0.0,         # m, the lap closes on the first cones only once the car is this close to the start (0 = at once)
     gate_radius=3.5,          # m from the lap's start within which big (orange) cones stand; an orange or wide thing farther out is not a cone
     big_cone_width=0.25,      # m, a lidar cluster at least this wide is a big cone (small cones show 0.05-0.1 m at the lidar height, big ones 0.3-0.4); big cones stand only at the start gate (0 = off)
@@ -550,6 +554,34 @@ class Racer(Node):
                     if votes[j, 1:3].max() < 1.0 and votes[j, 3] < 1.0 and len(self.slam.kfs[i] & self.slam.kfs[j]) >= 2:
                         rep[j] = ORANGE
                         self.get_logger().info("gate: landmark %d is the other cone of orange %d's pair (%.2f m apart)" % (j, i, d[j]))
+        # track repair: the finished map read as two boundaries along the lap; drift duplicates merged, clear gaps
+        # filled with cones interpolated along the path (repair.py; one switch, track_repair, to turn it off)
+        self.inferred = np.zeros(len(self.slam.lhat), bool)
+        if p["track_repair"] and len(self.slam.xhat) >= 8:
+            from .repair import repair
+            weak_now = self.slam.votes[:, 1:].max(axis=1) < 1.0            # the colours as the map will publish them
+            col_now = np.array([int(rep[i]) if (rep is not None and rep[i] != UNKNOWN and (col[i] == UNKNOWN or weak_now[i])) else int(col[i])
+                                for i in range(len(col))])
+            pts, cols, inferred, rp = repair(self.slam.lhat, col_now, self.slam.xhat, fill_ratio=p["repair_fill_ratio"],
+                                             max_fill=int(p["repair_max_fill"]), dup_ratio=p["repair_dup_ratio"], max_offset=p["max_path_dist"] or None)
+            if rp["added"] or rp["removed"]:
+                keep = rp["kept"]
+                self.slam.drop(keep)
+                n_add = int(inferred.sum())
+                if n_add:
+                    self.slam.lhat = np.vstack([self.slam.lhat, pts[inferred]])
+                    v = np.zeros((n_add, 4)); v[np.arange(n_add), cols[inferred]] = 1.0
+                    self.slam.votes = np.vstack([self.slam.votes, v])
+                    self.slam.count = np.append(self.slam.count, np.ones(n_add, int))
+                    self.slam.lidar_seen = np.append(self.slam.lidar_seen, np.zeros(n_add, int))
+                    if hasattr(self.slam, "kfs"):
+                        self.slam.kfs = list(self.slam.kfs) + [set() for _ in range(n_add)]
+                rep = np.concatenate([self.slam.colour_override, cols[inferred]]) if self.slam.colour_override is not None else None
+                self.slam.colour_override = rep
+                col = self.slam.colour
+                self.inferred = inferred
+            self.get_logger().info("track repair: %d duplicate(s) merged, %d cone(s) filled in; boundaries %s"
+                                   % (rp["removed"], rp["added"], ", ".join("%s %d cones at %.2f m" % ({BLUE: "blue", YELLOW: "yellow"}[c], v["cones"], v["spacing"]) for c, v in rp["chains"].items())))
         if p["freeze_dump"]:
             try:
                 import json
@@ -1187,8 +1219,9 @@ class Racer(Node):
         counts = self.slam.count
         shown = getattr(self, "_shown_colour", {})
         self._shown_colour = shown
+        inf_all = getattr(self, "inferred", None)
         for i, (x, y) in enumerate(self.slam.lhat):
-            if i < len(counts) and counts[i] < 2:
+            if i < len(counts) and counts[i] < 2 and not (inf_all is not None and i < len(inf_all) and inf_all[i]):
                 continue
             v = votes[i, 1:] if i < len(votes) else np.zeros(3)
             c = int(np.argmax(v)) + 1 if v.sum() > 0.0 else UNKNOWN     # grey until the camera has coloured it
@@ -1206,6 +1239,9 @@ class Racer(Node):
             shown[i] = c
             q = Pose()
             q.position.x, q.position.y, q.orientation.w = float(x), float(y), float(c)
+            inf = getattr(self, "inferred", None)
+            if inf is not None and i < len(inf) and inf[i]:
+                q.position.z = 1.0                      # filled in by the track repair, not seen
             arr.poses.append(q)
         return arr
 
