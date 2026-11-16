@@ -41,6 +41,7 @@ class GraphSLAM:
         self.votes = np.zeros((0, 4))          # per landmark: [unused, blue, yellow, orange] weighted colour votes
         self.count = np.zeros(0, dtype=int)    # per landmark: observations
         self.lidar_seen = np.zeros(0, dtype=int)   # per landmark: sightings the camera did not colour (lidar-only, see _admit_ghosts)
+        self.wide = np.zeros(0, dtype=int)         # per landmark: sightings as a big (wide) cluster; an orange sighting of weight 0 is one
         self.x.append(0)
         self.nvars = 2
         self._eq([(0, 1.0)], x0[0])
@@ -64,12 +65,16 @@ class GraphSLAM:
             return self.colour_override
         if len(self.votes) == 0:
             return np.zeros(0, dtype=int)
-        c = np.argmax(self.votes[:, 1:], axis=1) + 1
-        c[self.votes[:, 1:].sum(axis=1) <= 0.0] = UNKNOWN      # never coloured by the camera: unknown, not "blue" (argmax of zeros)
-        # orange on a single doubtful reading (one wide lidar cluster, one far camera box) is not orange: the gate cones
-        # are seen wide and orange scan after scan. Below a full vote the cone is uncoloured and takes its side
-        weak_orange = (c == ORANGE) & (self.votes[:, 3] < 1.0) & (self.votes[:, 1:3].sum(axis=1) <= 0.0)
-        c[weak_orange] = UNKNOWN
+        # orange is size and camera together: a cone seen as a big (wide) cluster at least twice, that the camera called
+        # orange at least once, is orange whatever else the camera said of it; a narrow cone is never orange, however
+        # many orange boxes landed on its bearing (that is the big cone behind it)
+        v = self.votes[:, 1:].copy()
+        # orange needs the cone to have been seen big: a wide lidar cluster at least once, or the camera's box clearly
+        # taller than a small cone (those votes are worth a full point each, so two of them pass)
+        big = ((self.wide >= 2) if len(self.wide) == len(v) else np.ones(len(v), bool)) | (v[:, 2] >= 1.5)
+        v[~big, 2] = 0.0
+        c = np.argmax(v, axis=1) + 1
+        c[v.sum(axis=1) <= 0.0] = UNKNOWN      # never coloured by the camera: unknown, not "blue" (argmax of zeros)
         return c
 
     @property
@@ -239,14 +244,17 @@ class GraphSLAM:
                 self.votes = np.vstack([self.votes, np.zeros(4)])
                 self.count = np.append(self.count, 0)
                 self.lidar_seen = np.append(self.lidar_seen, 0)
+                self.wide = np.append(self.wide, 0)
                 self.l.append(self.nvars)
                 self.nvars += 2
                 taken = np.append(taken, False)
             taken[j] = True
             self.votes[j, colour[i]] += weight[i]
             self.count[j] += 1
-            if colour[i] == UNKNOWN or (weight[i] <= 0.3 and colour[i] == ORANGE):     # a lidar-only sighting (a big cluster votes orange, a little)
+            if colour[i] == UNKNOWN or (colour[i] == ORANGE and weight[i] <= 0.0):      # a lidar sighting, uncoloured or wide
                 self.lidar_seen[j] += 1
+            if colour[i] == ORANGE and weight[i] <= 0.0:
+                self.wide[j] += 1
             w = self.z_weight
             self._eq([(self.l[j], w), (self.x[-1], -w)], z_rel[i, 0] * w)
             self._eq([(self.l[j] + 1, w), (self.x[-1] + 1, -w)], z_rel[i, 1] * w)
@@ -260,7 +268,7 @@ class GraphSLAM:
         gc = np.full(len(gw), UNKNOWN) if ghost_colour is None else ghost_colour
         extra_rel, extra_col, extra_w = [], [], []
         for i in range(len(gw)):
-            c_i, w_i = (int(gc[i]), 0.3) if gc[i] != UNKNOWN else (UNKNOWN, 0.0)     # a big cluster votes orange, a little
+            c_i, w_i = (int(gc[i]), 0.0) if gc[i] != UNKNOWN else (UNKNOWN, 0.0)     # a wide cluster: a size sighting (ORANGE, weight 0), no colour vote
             if len(self.lhat):
                 d = np.linalg.norm(self.lhat - gw[i], axis=1)
                 if d.min() < 0.6 * self.new_landmark_dist:
@@ -320,7 +328,7 @@ class GraphSLAM:
             return
         # tight: cones can stand half a metre apart (a gate pair, three at a drain); drift duplicates are merged after
         radius = radius if radius is not None else float(np.clip(0.6 * self.new_landmark_dist, 0.2, 0.3))
-        pts, votes, counts, cols, lseen, kfs = [], [], [], [], [], []
+        pts, votes, counts, cols, lseen, kfs, wide = [], [], [], [], [], [], []
         for k, z_rel, colour, weight in self.obs:
             if k >= len(self.xhat):
                 continue
@@ -337,14 +345,16 @@ class GraphSLAM:
                     if ok.any():
                         j = int(np.flatnonzero(ok)[np.argmin(d[ok])])
                 if j is None:
-                    pts.append(world[i].copy()); votes.append(np.zeros(4)); counts.append(0); cols.append(UNKNOWN); lseen.append(0); kfs.append(set())
+                    pts.append(world[i].copy()); votes.append(np.zeros(4)); counts.append(0); cols.append(UNKNOWN); lseen.append(0); kfs.append(set()); wide.append(0)
                     j = len(pts) - 1
                 kfs[j].add(k)
                 n = counts[j]
                 pts[j] = (pts[j] * n + world[i]) / (n + 1)
                 counts[j] = n + 1
-                if c == UNKNOWN or (float(weight[i]) <= 0.3 and c == ORANGE):
+                if c == UNKNOWN or (c == ORANGE and float(weight[i]) <= 0.0):
                     lseen[j] += 1
+                if c == ORANGE and float(weight[i]) <= 0.0:
+                    wide[j] += 1
                 votes[j][c] += float(weight[i])
                 v = votes[j][1:]
                 cols[j] = int(np.argmax(v)) + 1 if v.sum() > 0 else UNKNOWN
@@ -352,6 +362,7 @@ class GraphSLAM:
         self.votes = np.array(votes).reshape(-1, 4)
         self.count = np.array(counts, dtype=int)
         self.lidar_seen = np.array(lseen, dtype=int)
+        self.wide = np.array(wide, dtype=int)
         self.kfs = kfs                         # keyframes each landmark was seen at: the co-visibility test in freeze()
 
     def freeze(self, min_seen=2, refile=True, lidar_min_seen=4, camera_only_min_seen=0):
@@ -387,9 +398,11 @@ class GraphSLAM:
         self.dropped = [{"x": float(self.lhat[i, 0]), "y": float(self.lhat[i, 1]), "count": int(self.count[i]), "votes": [float(v) for v in self.votes[i, 1:]],
                          "lidar_seen": int(self.lidar_seen[i]) if i < len(self.lidar_seen) else -1} for i in np.flatnonzero(~keep)]
         lhat, votes, count = self.lhat[keep], self.votes[keep], self.count[keep]
+        wide_k = self.wide[keep].copy() if len(self.wide) == len(keep) else np.zeros(int(keep.sum()), dtype=int)
         kfs = [k for k, ok in zip(getattr(self, "kfs", []), keep) if ok] if len(getattr(self, "kfs", [])) == len(keep) else None
-        col = np.argmax(votes[:, 1:], axis=1) + 1
-        col[votes[:, 1:].sum(axis=1) <= 0.0] = UNKNOWN
+        vv = votes[:, 1:].copy(); vv[(wide_k < 2) & (vv[:, 2] < 1.5), 2] = 0.0
+        col = np.argmax(vv, axis=1) + 1
+        col[vv.sum(axis=1) <= 0.0] = UNKNOWN
         # duplicates from drift: two landmarks of one colour much closer to each other than either is to the next cone
         # of that colour (0.4 of that local spacing, at least merge_radius, at most 1 m). An outer ring with cones 2.5 m
         # apart merges a 0.6 m double; three yellows touching at a drain do not. The big orange gate cones stand in
@@ -431,9 +444,11 @@ class GraphSLAM:
                     count[i] += count[j]
                     if kfs is not None:
                         kfs[i] = kfs[i] | kfs[j]
+                    wide_k[i] += wide_k[j]
                     merged[j] = False
         self.lhat, self.votes, self.count = lhat[merged], votes[merged], count[merged]
         self.lidar_seen = (self.lidar_seen[keep] if len(self.lidar_seen) == len(keep) else np.zeros(int(keep.sum()), dtype=int))[merged]
+        self.wide = wide_k[merged]
         if kfs is not None:
             self.kfs = [k for k, ok in zip(kfs, merged) if ok]
         self.freeze_counts = (int(len(keep)), int(keep.sum()), int(merged.sum()))     # before, seen >= min_seen, after merge
@@ -446,6 +461,8 @@ class GraphSLAM:
         self.lhat, self.votes, self.count = self.lhat[keep], self.votes[keep], self.count[keep]
         if len(self.lidar_seen) == len(keep):
             self.lidar_seen = self.lidar_seen[keep]
+        if len(self.wide) == len(keep):
+            self.wide = self.wide[keep]
         if hasattr(self, "kfs") and len(self.kfs) == len(keep):
             self.kfs = [k for k, ok in zip(self.kfs, keep) if ok]
         if self.colour_override is not None and len(self.colour_override) == len(keep):

@@ -156,6 +156,7 @@ class Perception:
         colour, dim, taken = [None] * n, [False] * n, set()
         conf = [1.0] * n                                  # a detector's confidence, when the blobs carry one
         self._conf = conf
+        self._big = [False] * n                           # the box says big cone (see below)
         if self.blobs and self.image_width:
             tol = self.p["match_px_frac"] * self.image_width
             fx = (self.image_width / 2.0) / math.tan(math.radians(self.p["camera_hfov_deg"]) / 2.0)
@@ -177,6 +178,17 @@ class Perception:
                 colour[i], dim[i] = self.blobs[k][0], self.blobs[k][5]
                 if len(self.blobs[k]) > 6:
                     conf[i] = float(self.blobs[k][6])
+                    # size before class: a box clearly taller than a small cone at this range is a big cone, and big
+                    # cones are orange whatever the class says (the detector, trained on small cones mostly, calls a
+                    # big orange cone up close "blue" with confidence); a box the height of a small cone that the
+                    # class calls orange is a small cone with the gate behind it: no colour
+                    b = self.blobs[k]
+                    rng = max(0.3, math.hypot(clusters[i][0] - self.p["camera_ahead"], clusters[i][1] - self.p["camera_lateral"]))
+                    ratio = (b[3] - b[2]) / (fx * 0.22 / rng)
+                    if ratio >= 1.35:
+                        colour[i], conf[i], self._big[i] = ORANGE, max(conf[i], 1.0), True
+                    elif colour[i] == ORANGE:
+                        colour[i] = None
         amb_px = 0.065 * self.image_width if self.image_width else 12.0
         ambiguous = [not math.isnan(cols[i]) and any(j != i and not math.isnan(cols[j]) and abs(cols[j] - cols[i]) < amb_px for j in range(n)) for i in range(n)]
         return colour, ambiguous, dim
@@ -207,6 +219,8 @@ class Perception:
             reach = float(np.clip(1.3 - 0.15 * math.hypot(x, y), 0.35, 1.0))
             colour, age = cam_colour[i], 0
             weight = 0.0 if colour is None else (0.3 if ambiguous[i] else 1.0) * reach * self._conf[i]
+            if colour is not None and getattr(self, "_big", None) and self._big[i]:
+                weight = reach * self._conf[i]          # a box the size of a big cone is unmistakable, pair or not
             # the same cone last scan: its colour votes carry over, so one wrong reading of a
             # cone the camera has seen right several times does not change it
             votes = {}
@@ -245,6 +259,39 @@ class Perception:
         self.unknown_isolated = [iso[i] for i, (x, y, colour, _, _) in enumerate(out) if colour is None]   # see racer.on_scan
         wid = getattr(self, "cluster_width", None) or [0.0] * len(out)
         self.unknown_width = [wid[i] for i, (x, y, colour, _, _) in enumerate(out) if colour is None]
-        # (a wide cluster is a big cone, but big cones come in blue too at the start line, so width says nothing about
-        # the colour: the camera does. Width only decides where a wide cluster may count as a cone: racer.on_scan)
+        # size is colour for the big cones: a cluster at least big_cone_width wide is a big cone and big cones are
+        # orange (full vote); a narrow cluster is a small cone and can never be orange, so an orange box on it is the
+        # bearing match taking the big cone behind it (its vote is dropped, the cone stays uncoloured this scan)
+        big = float(self.p.get("big_cone_width", 0.0))
+        if big > 0.0:
+            fixed, k, stray = [], 0, []
+            for i, (x, y, colour, _, _) in enumerate(out):
+                if colour is None:
+                    continue
+                rx, ry, rc, rw = result[k]; k += 1
+                if rc == ORANGE and wid[i] < big and not self._big[i]:
+                    # an orange box on a narrow cluster: a small cone (or the sliver of a half-hidden big one) with the
+                    # big cone on the same bearing; the box goes to the big cluster next to it if there is one
+                    stray.append((rx, ry, rw, i))
+                else:
+                    fixed.append((rx, ry, rc, rw))
+            fixed_idx = {id(r) for r in fixed}
+            for rx, ry, rw, i in stray:
+                b = math.atan2(ry, rx); given = False
+                for j, (wx, wy) in enumerate(clusters):
+                    if j == i or wid[j] < big or abs(math.atan2(math.sin(math.atan2(wy, wx) - b), math.cos(math.atan2(wy, wx) - b))) > 0.12 or math.hypot(wx - rx, wy - ry) > 1.0:
+                        continue
+                    for n, r in enumerate(fixed):
+                        if r[0] == wx and r[1] == wy:
+                            fixed[n] = (wx, wy, ORANGE, max(r[3], rw)); given = True; break
+                    if not given:
+                        # the big cluster had no colour (it is in the uncoloured list): colour it now
+                        for n, (ux, uy) in enumerate(self.unknown):
+                            if ux == wx and uy == wy:
+                                del self.unknown[n]; del self.unknown_isolated[n]; del self.unknown_width[n]
+                                fixed.append((wx, wy, ORANGE, rw)); given = True; break
+                    if given:
+                        break
+                self.unknown.append((rx, ry)); self.unknown_isolated.append(iso[i]); self.unknown_width.append(wid[i])
+            result = fixed
         return result
