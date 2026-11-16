@@ -71,7 +71,8 @@ class GraphSLAM:
         v = self.votes[:, 1:].copy()
         # orange needs the cone to have been seen big: a wide lidar cluster at least once, or the camera's box clearly
         # taller than a small cone (those votes are worth a full point each, so two of them pass)
-        big = ((self.wide >= 2) if len(self.wide) == len(v) else np.ones(len(v), bool)) | (v[:, 2] >= 1.5)
+        wide = self.wide if len(self.wide) == len(v) else np.zeros(len(v), int)
+        big = ((wide >= 1) & (v[:, 2] >= 1.5)) | (v[:, 2] >= 3.0)     # big by the lidar and the box together, or by the box many times
         v[~big, 2] = 0.0
         c = np.argmax(v, axis=1) + 1
         c[v.sum(axis=1) <= 0.0] = UNKNOWN      # never coloured by the camera: unknown, not "blue" (argmax of zeros)
@@ -400,7 +401,7 @@ class GraphSLAM:
         lhat, votes, count = self.lhat[keep], self.votes[keep], self.count[keep]
         wide_k = self.wide[keep].copy() if len(self.wide) == len(keep) else np.zeros(int(keep.sum()), dtype=int)
         kfs = [k for k, ok in zip(getattr(self, "kfs", []), keep) if ok] if len(getattr(self, "kfs", [])) == len(keep) else None
-        vv = votes[:, 1:].copy(); vv[(wide_k < 2) & (vv[:, 2] < 1.5), 2] = 0.0
+        vv = votes[:, 1:].copy(); vv[~(((wide_k >= 1) & (vv[:, 2] >= 1.5)) | (vv[:, 2] >= 3.0)), 2] = 0.0
         col = np.argmax(vv, axis=1) + 1
         col[vv.sum(axis=1) <= 0.0] = UNKNOWN
         # duplicates from drift: two landmarks of one colour much closer to each other than either is to the next cone

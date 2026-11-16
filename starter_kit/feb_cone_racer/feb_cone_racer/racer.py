@@ -1236,11 +1236,15 @@ class Racer(Node):
         shown = getattr(self, "_shown_colour", {})
         self._shown_colour = shown
         inf_all = getattr(self, "inferred", None)
+        saved = self.slam.colour_override
+        self.slam.colour_override = None
+        base = self.slam.colour                 # the voted colour with the mapper's rules (orange needs size), no side repair
+        self.slam.colour_override = saved
         for i, (x, y) in enumerate(self.slam.lhat):
             if i < len(counts) and counts[i] < 2 and not (inf_all is not None and i < len(inf_all) and inf_all[i]):
                 continue
             v = votes[i, 1:] if i < len(votes) else np.zeros(3)
-            c = int(np.argmax(v)) + 1 if v.sum() > 0.0 else UNKNOWN     # grey until the camera has coloured it
+            c = int(base[i]) if i < len(base) else UNKNOWN              # grey until the camera has coloured it
             # a cone the camera never coloured takes its side from the driven path once the map is closed
             # (camera votes are never overridden by the path: on a hand-driven lap the path is not the middle)
             rep = self.slam.colour_override
