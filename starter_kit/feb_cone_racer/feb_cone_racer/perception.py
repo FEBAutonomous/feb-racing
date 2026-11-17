@@ -144,7 +144,7 @@ class Perception:
         cy = y - self.p["camera_lateral"]
         if cx < 0.2:
             return float("nan")
-        bearing = math.atan2(cy, cx) + yaw_rate * self.p["camera_lag_s"]     # where it was when the image was taken
+        bearing = math.atan2(cy, cx) + yaw_rate * (self.p["camera_lag_s"] + getattr(self, "extra_lag", 0.0))   # where it was when the image was taken
         return w / 2.0 - fx * math.tan(bearing) + self.p["camera_col_bias"]
 
     def assign(self, clusters, yaw_rate=0.0):

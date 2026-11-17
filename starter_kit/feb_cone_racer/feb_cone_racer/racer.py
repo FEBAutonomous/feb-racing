@@ -65,7 +65,8 @@ DEFAULTS = dict(
     # the camera itself (a venue profile may fix exposure and white balance; see camera_lock.py)
     camera_auto_exposure=True, camera_exposure=0, camera_auto_wb=True, camera_white_balance=0,
     # which camera perception: "hsv" (colour thresholds, perception.py) or "cnn" (a trained detector, perception_cnn.py)
-    detector="hsv", detector_model="/home/feb/FEB/cone-detector/cones.onnx", detector_conf=0.3,
+    detector="hsv", detector_model="/home/feb/FEB/cone-detector/cones.onnx", detector_conf=0.3, detector_size=640,
+    detector_max_age=0.7,     # s, detections older than this (the detector fell behind) colour nothing
     # lap-1 follower
     map_speed=1.2, map_min_speed=0.8, lookahead=1.0, follow_range=3.5, throttle_start=0.07, chain_step=1.8, avoid_range=0.9, local_path_lookahead=1.4, local_path_min_reach=2.0, rung_max_age=1.0,
     speed_per_throttle=24.95, speed_tau=0.8, throttle_kp=0.02, throttle_ki=0.03, throttle_slew=0.8, speed_window=0.25, steer_tau=0.15,
@@ -125,7 +126,7 @@ class Racer(Node):
         p = self.p
         if p["detector"] == "cnn":
             from .perception_cnn import CnnPerception
-            self.perception = CnnPerception(p, p["detector_model"], conf=float(p["detector_conf"]))
+            self.perception = CnnPerception(p, p["detector_model"], conf=float(p["detector_conf"]), size=int(p["detector_size"]))
             self.get_logger().info("perception: detector %s (%s)" % (p["detector_model"], self.perception.provider))
         else:
             self.perception = Perception(p)
@@ -311,6 +312,12 @@ class Racer(Node):
             self.seen_pose = self.pose.copy()
         clusters = self.perception.clusters(msg)
         self.clusters_now, self.last_dt = clusters, dt
+        det_stamp = getattr(self.perception, "det_stamp", 0.0)
+        if det_stamp > 0.0:
+            age = t - det_stamp
+            self.perception.extra_lag = float(np.clip(age, 0.0, 0.5))
+            if age > p["detector_max_age"]:
+                self.perception.blobs = []             # the detector fell behind: no colour this scan rather than a wrong one
         cones = self.perception.fuse(clusters, self.speed, self.yaw, dt, self.yaw_rate)
         self.publish_cones(msg.header, cones)
 
@@ -335,7 +342,8 @@ class Racer(Node):
         if p["scan_odometry"] and self.mode == "MAPPING":
             # the motion from the whole scan matched against the last keyframe scans (scanmatch.py); the wheels and
             # the IMU only give it the starting guess. The heading it settles on is the heading the map is built in
-            dx, yaw_sm = self.scan_odo.update(msg, self.yaw, ds)
+            still = abs(self.speed) < 0.05 and abs(self.yaw_rate) < 0.03       # wheels and gyro both quiet: parked
+            dx, yaw_sm = self.scan_odo.update(msg, self.yaw, ds, still=still)
             self.yaw = yaw_sm
             ds = float(np.linalg.norm(dx))
         else:

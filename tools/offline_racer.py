@@ -15,12 +15,13 @@ extra = dict(a.split("=", 1) for a in sys.argv[4:])
 # the same stack of files and detector overrides as race.launch.py detector:=cnn on the car
 args = ["--ros-args", "--params-file", CFG + "/racer.yaml", "--params-file", CFG + "/racer.car.yaml", "--params-file", CFG + "/venues/uab.yaml",
         "-p", "use_sim_time:=false", "-p", "detector:=cnn", "-p", "side_guess_range:=0.0", "-p", "side_override_x:=0.0", "-p", "max_range:=5.0",
-        "-p", "keyframe_dist:=0.2", "-p", "lidar_cone_range:=3.5"]
+        "-p", "keyframe_dist:=0.2", "-p", "lidar_cone_range:=3.5", "-p", "camera_only_min_seen:=3"]
 for k, v in extra.items():
     args += ["-p", "%s:=%s" % (k, v)]
 rclpy.init(args=args)
 from feb_cone_racer.racer import Racer
 racer = Racer()
+racer.perception.asynchronous = False      # offline: every frame, in order, deterministic
 r = SequentialReader(); r.open(StorageOptions(uri=bag, storage_id="sqlite3"), ConverterOptions("", ""))
 first = None; n = 0; k = math.pi / 180.0; closed = False; t_start = time.time()
 while r.has_next():

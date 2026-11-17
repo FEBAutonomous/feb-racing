@@ -50,13 +50,19 @@ class ScanOdometry:
         self.cloud = np.vstack([k[2] for k in self.keyframes])
         self.tree = cKDTree(self.cloud)
 
-    def update(self, msg, imu_yaw, ds):
-        """One scan: `imu_yaw` the IMU heading now, `ds` the wheel distance since the last scan.
-        Returns (dx_world, yaw): the motion since the last call in the world frame and the heading."""
+    def update(self, msg, imu_yaw, ds, still=False):
+        """One scan: `imu_yaw` the IMU heading now, `ds` the wheel distance since the last scan; `still` when the
+        wheels and the gyro both say the car is parked. Returns (dx_world, yaw): the motion since the last call in
+        the world frame and the heading."""
         P = self.points(msg)
         if self.yaw is None:
             self.yaw, self.last_imu = imu_yaw, imu_yaw
             self._keyframe(P)
+            self.ok = True
+            return np.zeros(2), self.yaw
+        if still:
+            # a parked car does not move because people walk past the lidar: the match is skipped, the pose holds
+            self.last_imu = imu_yaw
             self.ok = True
             return np.zeros(2), self.yaw
         # the guess: turn as the IMU turned, move as the wheels moved, along the heading

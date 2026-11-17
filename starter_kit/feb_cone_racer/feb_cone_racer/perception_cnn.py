@@ -28,8 +28,43 @@ class CnnPerception(Perception):
         self.conf, self.iou, self.size = conf, iou, size
         self.detections = []            # [(class, conf, x0, y0, x1, y1)] of the latest image, in image pixels
         self.provider = self.session.get_providers()[0]
+        # inference runs on its own thread: a frame takes long on a small CPU (a second for yolov8s at 640 on a
+        # Jetson Orin Nano) and the scan callbacks must not wait for it. on_image() only keeps the newest frame; the
+        # worker takes it when it is free, so frames are dropped rather than queued, and the detections carry the
+        # stamp of the frame they came from (the racer adds that age to the camera lag when it projects cones)
+        import threading
+        self.asynchronous = True
+        self.det_stamp = 0.0            # header stamp of the frame the current detections came from
+        self.infer_ms = 0.0
+        self._latest = None
+        self._lock = threading.Lock()
+        self._wake = threading.Condition(self._lock)
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
 
     def on_image(self, msg):
+        if not self.asynchronous:
+            self._infer(msg)
+            return
+        with self._wake:
+            self._latest = msg
+            self._wake.notify()
+
+    def _worker(self):
+        import time
+        while True:
+            with self._wake:
+                while self._latest is None:
+                    self._wake.wait()
+                msg, self._latest = self._latest, None
+            t0 = time.time()
+            try:
+                self._infer(msg)
+            except Exception:               # noqa: BLE001  (a bad frame must not kill the thread)
+                pass
+            self.infer_ms = 1000.0 * (time.time() - t0)
+
+    def _infer(self, msg):
         if msg.encoding not in ("rgb8", "bgr8"):
             return
         img = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, 3)
@@ -74,3 +109,4 @@ class CnnPerception(Perception):
         # dim stays False (the detector already judged it is a cone); confidence rides along as a 7th item
         self.blobs = [(CLASS_COLOUR.get(c, BLUE), (x0 + x1) / 2.0, y0, y1, (x1 - x0) * (y1 - y0), False, conf) for c, conf, x0, y0, x1, y1 in dets]
         self.image_height = h
+        self.det_stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
