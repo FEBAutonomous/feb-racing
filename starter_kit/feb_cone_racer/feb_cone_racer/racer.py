@@ -74,7 +74,9 @@ DEFAULTS = dict(
     push_throttle=0.16, recover_for=8.0,
     # slam
     keyframe_dist=0.4, slam_range=6.0, loc_range=6.0, loc_corridor=2.5, dx_weight=2.0, z_weight=1.0, new_landmark_dist=0.6, icp_gate=1.5,
-    solve_every=3, min_lap_length=15.0, order_timeout=10.0, closure_landmarks=10, lap_close_dist=2.0, min_seen=2, icp_min_matches=5, snap_radius=10.0, snap_gate=6.0,
+    solve_every=3, min_lap_length=15.0,
+    min_lap_area=20.0,        # m2 the driven path must enclose before "back at the start" counts as a lap (an out-and-back
+                              # corridor drive returns to its start facing the same way and encloses nothing; 0 = any) order_timeout=10.0, closure_landmarks=10, lap_close_dist=2.0, min_seen=2, icp_min_matches=5, snap_radius=10.0, snap_gate=6.0,
     # lidar-only cones (the camera never coloured them, typically cones the car hugs): admitted to the map when they are
     # isolated cone-sized clusters within lidar_cone_range, seen at lidar_cone_keyframes keyframes in the same place, and
     # kept at closure only with lidar_min_seen sightings; their colour comes from the side of the driven path. 0 = off
@@ -489,6 +491,8 @@ class Racer(Node):
 
     def mapping_step(self, z_rel, colours, weights, ghosts=None, ghost_colour=None):
         p = self.p
+        if self.slam.frozen:
+            return
         if self.start is None:
             self.start = (self.pose.copy(), self.yaw)
             self.lap_start_t = self.last_t
@@ -561,19 +565,29 @@ class Racer(Node):
         near_enough = p["close_within"] <= 0.0 or d0 < p["close_within"]
         closing = (self.travelled > p["min_lap_length"] + 20.0 and early >= 3 and near_enough and d0 < max(p["snap_radius"], 0.06 * self.travelled) and math.cos(self.yaw - self.start[1]) > 0.5) \
             or (self.travelled > p["min_lap_length"] and d0 < close and math.cos(self.yaw - self.start[1]) > 0.5)
+        if closing and p["min_lap_area"] > 0.0 and self.path_area() < p["min_lap_area"]:
+            closing = False             # back where it began, facing the same way, but it drove there and back: not a lap
         if closing and self.close_at is None:
             # the loop is closed; the map freezes close_delay_m farther on, so the start gate, which the car is just
             # reaching, is seen from the front by the camera before the lap ends (its cones stood beside the car when
             # the lap began, where only the lidar had them)
             self.close_at = self.travelled + p["close_delay_m"]
             self.get_logger().info("loop closure: %d of the first cones in view again, %.1f m from the start; mapping %.1f m more for the gate" % (early, d0, p["close_delay_m"]))
-        if self.close_at is not None and self.travelled >= self.close_at:
+        if self.close_at is not None and self.travelled >= self.close_at and not self.slam.frozen:
             self.finish_mapping()
         elif self.keyframes % 10 == 0:
             det = ""
             if getattr(self.perception, "asynchronous", False):
                 det = ", detector %.0f ms" % self.perception.infer_ms + (" ERROR " + self.perception.error if self.perception.error else "")
             self.get_logger().info("mapping: %d keyframes, %d landmarks, travelled %.1f m%s" % (self.keyframes, len(self.slam.lhat), self.travelled, det))
+
+    def path_area(self):
+        """Area the driven path encloses (shoelace on the solved keyframe poses, closed back to the start), m2."""
+        P = np.asarray(self.slam.xhat, dtype=float)
+        if len(P) < 3:
+            return 0.0
+        x, y = P[:, 0], P[:, 1]
+        return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
 
     def finish_mapping(self):
         """The map is complete: freeze it, repair the colours from the mapping-lap path, and
@@ -854,8 +868,9 @@ class Racer(Node):
             track = build_track(self.slam.lhat, self.slam.colour, self.start[0], (math.cos(self.start[1]), math.sin(self.start[1])), p["sample_step"],
                                 path=self.slam.xhat)
             if track is None:
-                self.get_logger().error("map has too few cones of a colour; keep following the local line")
-                self.slam.frozen = False
+                self.get_logger().error("map has too few cones of a colour; keep following the local line on the frozen map")
+                # the frozen map stays (its graph was merged and refiled: it cannot take more sightings); the car keeps
+                # driving on the reactive follower with it. mapping_step() does nothing while the map is frozen
                 self.slam.colour_override = None
                 self.mode = "MAPPING"
                 return

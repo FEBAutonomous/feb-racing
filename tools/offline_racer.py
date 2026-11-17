@@ -24,12 +24,18 @@ racer = Racer()
 racer.perception.asynchronous = False      # offline: every frame, in order, deterministic
 r = SequentialReader(); r.open(StorageOptions(uri=bag, storage_id="sqlite3"), ConverterOptions("", ""))
 first = None; n = 0; k = math.pi / 180.0; closed = False; t_start = time.time()
+extra = dict(kv.split("=", 1) for kv in sys.argv[4:] if "=" in kv)
+live_to, snaps = extra.get("live_dump", ""), []        # the live map every 5 scans: what the dash shows during the lap
 while r.has_next():
     topic, data, ts = r.read_next(); ts /= 1e9
     if first is None: first = ts
     if ts - first < t0: continue
     if topic == "/scan":
         racer.on_scan(deserialize_message(data, LaserScan)); n += 1
+        if live_to and n % 5 == 0 and racer.yaw is not None:
+            lm = racer.map_message()
+            snaps.append({"t": round(ts - first, 2), "pose": [float(racer.pose[0]), float(racer.pose[1])], "yaw": float(racer.yaw), "travelled": round(float(racer.travelled), 2),
+                          "cones": [[round(q.position.x, 3), round(q.position.y, 3), int(round(q.orientation.w))] for q in lm.poses]})
     elif topic == "/camera/color/image_raw":
         racer.on_image(deserialize_message(data, Image))
     elif topic == "/sensors/imu/raw":
@@ -45,6 +51,8 @@ while r.has_next():
         closed = True
         break
 msg = racer.map_message()
+if live_to:
+    json.dump(snaps, open(live_to, "w"))
 if not closed:
     # no closed lap (an out-and-back corridor): the graph as it stands, with the solved path, for the truth tools
     dump_to = dict(kv.split("=", 1) for kv in sys.argv[4:] if "=" in kv).get("freeze_dump", "")
