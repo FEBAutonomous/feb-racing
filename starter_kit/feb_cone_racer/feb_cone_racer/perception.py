@@ -96,6 +96,7 @@ class Perception:
         """Small tight clusters within max_range: cone candidates as (x, y) in the car frame."""
         ranges = np.asarray(msg.ranges, dtype=float)
         angles = msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
+        self.last_scan = (ranges, angles)          # the beams, for the camera-first observations (see assign)
         ok = np.isfinite(ranges) & (ranges > 0.3) & (ranges < self.p["max_range"])
         xs, ys = ranges * np.cos(angles), ranges * np.sin(angles)
         groups, cur = [], []
@@ -147,6 +148,32 @@ class Perception:
         bearing = math.atan2(cy, cx) + yaw_rate * (self.p["camera_lag_s"] + getattr(self, "extra_lag", 0.0))   # where it was when the image was taken
         return w / 2.0 - fx * math.tan(bearing) + self.p["camera_col_bias"]
 
+    # ---- the floor-row range: on a flat floor the image row where a cone meets the ground tells its range,
+    # whatever the cone's size. bottom = b0 + b1 / range, fitted from every box the lidar matched (self-calibrating:
+    # nothing about the camera's pitch or height is assumed), usable after floor_fit_min pairs.
+    def floor_update(self, rng, bottom):
+        f = self.__dict__.setdefault("floor_fit", {"n": 0, "sx": 0.0, "sy": 0.0, "sxx": 0.0, "sxy": 0.0})
+        x = 1.0 / max(rng, 0.3)
+        f["n"] += 1; f["sx"] += x; f["sy"] += bottom; f["sxx"] += x * x; f["sxy"] += x * bottom
+        if f["n"] > 2000:                          # a sliding memory: halve the sums so a new venue can take over
+            for k in ("n", "sx", "sy", "sxx", "sxy"):
+                f[k] *= 0.5
+
+    def floor_range(self, bottom):
+        """Range implied by a box's bottom row, or None before the model is fitted (or for a row the model
+        cannot place: at or above the horizon, or cut by the frame's bottom edge)."""
+        f = getattr(self, "floor_fit", None)
+        if not f or f["n"] < int(self.p.get("floor_fit_min", 30)) or not self.image_height or bottom >= self.image_height - 3:
+            return None
+        d = f["n"] * f["sxx"] - f["sx"] ** 2
+        if abs(d) < 1e-9:
+            return None
+        b1 = (f["n"] * f["sxy"] - f["sx"] * f["sy"]) / d
+        b0 = (f["sy"] - b1 * f["sx"]) / f["n"]
+        if b1 <= 1.0 or bottom - b0 <= 1.0:
+            return None
+        return b1 / (bottom - b0)
+
     def assign(self, clusters, yaw_rate=0.0):
         blobs = self.blobs      # one snapshot: the detector thread replaces the list while this runs
         """One-to-one matching of lidar cones to camera blobs by image column, closest pairs
@@ -158,6 +185,7 @@ class Perception:
         conf = [1.0] * n                                  # a detector's confidence, when the blobs carry one
         self._conf = conf
         self._big = [False] * n                           # the box says big cone (see below)
+        self._bottom = [None] * n                         # the matched box's bottom row (the floor-row range, see fuse)
         if blobs and self.image_width:
             tol = self.p["match_px_frac"] * self.image_width
             fx = (self.image_width / 2.0) / math.tan(math.radians(self.p["camera_hfov_deg"]) / 2.0)
@@ -185,19 +213,35 @@ class Perception:
                         ratio = r_big if is_big else r_small
                         if not 0.5 <= ratio <= 2.0:
                             continue
+                        # ...and its bottom row must put it at this range too (size-free): the big cone's box in
+                        # front cannot land on the small cone standing behind it on the same bearing
+                        rf = self.floor_range(b[3])
+                        if rf is not None and not 0.7 <= rf / rng <= 1.4:
+                            continue
+                        if rf is None and self.image_height and b[3] >= self.image_height - 3:
+                            # the box runs off the bottom of the frame: the cone is nearer than the nearest row the
+                            # floor model can place, so a cluster much farther than that is not this cone
+                            near = self.floor_range(self.image_height - 4)
+                            if near is not None and rng > 1.4 * near:
+                                continue
                         cost[i, k] = (dc / tol) ** 2 + 4.0 * math.log(ratio) ** 2
                         big[i, k] = is_big and r_small >= 1.35
                     else:
                         cost[i, k] = (dc / tol) ** 2
             from scipy.optimize import linear_sum_assignment
             rows, colsk = linear_sum_assignment(cost)
+            matched_boxes = set()
             for i, k in zip(rows, colsk):
                 if cost[i, k] >= 1e6:
                     continue
                 b = blobs[k]
+                matched_boxes.add(k)
+                if len(b) > 6 and self.image_height and b[3] < self.image_height - 3:
+                    self.floor_update(max(0.3, math.hypot(clusters[i][0] - self.p["camera_ahead"], clusters[i][1] - self.p["camera_lateral"])), b[3])
                 colour[i], dim[i] = b[0], b[5]
                 if len(b) > 6:
                     conf[i] = float(b[6])
+                    self._bottom[i] = float(b[3])
                     # size before class: a box the height of a big cone at this range is a big cone, and big cones
                     # are orange whatever the class says; a small-cone-sized box the class calls orange is a small
                     # cone with the gate behind it: no colour
@@ -207,6 +251,39 @@ class Perception:
                         colour[i] = None
         amb_px = 0.065 * self.image_width if self.image_width else 12.0
         ambiguous = [not math.isnan(cols[i]) and any(j != i and not math.isnan(cols[j]) and abs(cols[j] - cols[i]) < amb_px for j in range(n)) for i in range(n)]
+        # camera-first: a sure box that fits no cluster is still a cone (one the lidar folded into a wall it stands
+        # against, or one too small for a cluster). Its bearing comes from the box column, its range from the lidar
+        # beams on that bearing (they hit the cone before the wall), checked against the floor-row range
+        self.camera_only = []
+        if blobs and self.image_width and self.p.get("camera_only_conf", 0.0) > 0.0 and getattr(self, "last_scan", None) is not None:
+            fx = (self.image_width / 2.0) / math.tan(math.radians(self.p["camera_hfov_deg"]) / 2.0)
+            rg, ang = self.last_scan
+            for k, b in enumerate(blobs):
+                if k in matched_boxes:
+                    continue
+                if len(b) <= 6 or float(b[6]) < self.p["camera_only_conf"] or b[5]:
+                    continue
+                rf = self.floor_range(b[3])
+                if rf is None or rf > self.p["max_range"]:
+                    continue
+                bearing = math.atan((self.image_width / 2.0 + self.p["camera_col_bias"] - b[1]) / fx) - yaw_rate * (self.p["camera_lag_s"] + getattr(self, "extra_lag", 0.0))
+                cx, cy = rf * math.cos(bearing) + self.p["camera_ahead"], rf * math.sin(bearing) + self.p["camera_lateral"]
+                lb = math.atan2(cy, cx)
+                win = np.abs(np.arctan2(np.sin(ang - lb), np.cos(ang - lb))) < math.radians(2.0)
+                beams = rg[win & np.isfinite(rg) & (rg > 0.3)]
+                if len(beams) == 0:
+                    continue
+                r_lidar = float(np.min(beams))            # the nearest return on that bearing: the cone, not the wall behind it
+                if not 0.7 <= r_lidar / rf <= 1.3:
+                    continue
+                h = b[3] - b[2]
+                r_small, r_big = h / (fx * 0.22 / r_lidar), h / (fx * 0.33 / r_lidar)
+                col = b[0]
+                if col == ORANGE:
+                    if not (abs(math.log(r_big)) < abs(math.log(r_small)) and r_small >= 1.35):
+                        continue                           # a small orange box is the gate behind a small cone
+                reach = float(np.clip(1.3 - 0.15 * r_lidar, 0.35, 1.0))
+                self.camera_only.append((r_lidar * math.cos(lb), r_lidar * math.sin(lb), col, 0.6 * reach * float(b[6])))
         return colour, ambiguous, dim
 
     def fuse(self, clusters, speed, yaw, dt, yaw_rate=0.0):
@@ -294,8 +371,18 @@ class Perception:
             fixed_idx = {id(r) for r in fixed}
             for rx, ry, rw, i in stray:
                 b = math.atan2(ry, rx); given = False
+                # the box's floor row says where the big cone stands: the wide cluster that takes the box must be there
+                # (a box cut by the frame's bottom is nearer than the nearest row the floor model can place)
+                bottom = self._bottom[i] if i < len(getattr(self, "_bottom", [])) else None
+                rf = self.floor_range(bottom) if bottom is not None else None
+                near = self.floor_range(self.image_height - 4) if (rf is None and bottom is not None and self.image_height and bottom >= self.image_height - 3) else None
                 for j, (wx, wy) in enumerate(clusters):
                     if j == i or wid[j] < big or abs(math.atan2(math.sin(math.atan2(wy, wx) - b), math.cos(math.atan2(wy, wx) - b))) > 0.12 or math.hypot(wx - rx, wy - ry) > 1.0:
+                        continue
+                    rj = math.hypot(wx - self.p["camera_ahead"], wy - self.p["camera_lateral"])
+                    if rf is not None and not 0.7 <= rf / max(rj, 0.3) <= 1.4:
+                        continue
+                    if near is not None and rj > 1.4 * near:
                         continue
                     for n, r in enumerate(fixed):
                         if r[0] == wx and r[1] == wy:
@@ -310,4 +397,9 @@ class Perception:
                         break
                 self.unknown.append((rx, ry)); self.unknown_isolated.append(iso[i]); self.unknown_width.append(wid[i])
             result = fixed
+        for cx, cy, cc, cw in getattr(self, "camera_only", []):
+            # not within half a metre of an observation the lidar already made: the same cone twice in one scan would
+            # file as two landmarks (one observation per landmark per keyframe) that are then "seen together" for good
+            if all(math.hypot(cx - rx, cy - ry) > 0.5 for rx, ry, _, _ in result):
+                result.append((cx, cy, cc, cw))
         return result

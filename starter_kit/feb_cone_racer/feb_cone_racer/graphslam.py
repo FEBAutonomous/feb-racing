@@ -497,8 +497,10 @@ class GraphSLAM:
                 dij = np.linalg.norm(self.lhat[i] - self.lhat[j])
                 ci, cj = int(self.colour[i]), int(self.colour[j])
                 compatible = ci == cj or ci == UNKNOWN or cj == UNKNOWN
+                # (an orange pair gets a wider radius: a big cone's lidar centroid moves half a metre with the
+                # viewpoint; the gate pairs that stand that close are seen together in scan after scan)
                 apart = (len(self.kfs_live) == len(self.lhat) and len(self.kfs_live[i] & self.kfs_live[j]) == 0
-                         and ORANGE not in (ci, cj) and dij < never_together)
+                         and dij < (never_together * 1.2 if ORANGE in (ci, cj) else never_together))
                 if compatible and (dij < radius or apart):
                     li, lj = self.l[i], self.l[j]
                     self.rows = [(r, (li if c == lj else li + 1 if c == lj + 1 else c), v) for r, c, v in self.rows]

@@ -86,7 +86,10 @@ DEFAULTS = dict(
     cam_miss_max=3,           # cam_miss_max keyframes in a row, is not a cone (a door jamb, a chair leg); 0 = off
     cam_miss_max_wide=0,      # the same for a wide (big cone) landmark; 0 = big cones are never hidden (the UAB gate lost two cones at 6)
     merge_live_dist=0.35,     # m: two landmarks this close whose colours do not disagree merge during the lap (0 = off)
-    merge_never_together=0.5, # m: so do two this close that no keyframe saw together (big orange cones excepted)
+    merge_never_together=0.5, # m: so do two this close that no keyframe saw together (1.2x that for an orange pair)
+    camera_only_conf=0.5,     # a box at least this sure that fits no lidar cluster becomes a cone on its own: bearing from the
+                              # column, range from the lidar beams there, checked against the floor-row range (0 = off)
+    floor_fit_min=30,         # lidar-matched boxes the floor-row range model needs before it is trusted
     parked_restart=8,         # keyframes a parked car keeps before its map starts over (0: never)
     merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
     never_together_dist=0.4,  # m, at closure two landmarks never seen in one scan and closer than this are one cone (a drift double)
