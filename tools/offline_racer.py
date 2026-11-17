@@ -45,6 +45,11 @@ while r.has_next():
         closed = True
         break
 msg = racer.map_message()
+if not closed:
+    # no closed lap (an out-and-back corridor): the graph as it stands, with the solved path, for the truth tools
+    dump_to = dict(kv.split("=", 1) for kv in sys.argv[4:] if "=" in kv).get("freeze_dump", "")
+    if dump_to:
+        racer.dump_map(dump_to)
 json.dump({"closed": closed, "scans": n, "landmarks": [[p.position.x, p.position.y, int(round(p.orientation.w))] for p in msg.poses]}, open(out, "w"))
 print("offline replay: %d scans, map %s, %d landmarks, %.0f s" % (n, "closed" if closed else "NOT closed", len(msg.poses), time.time() - t_start))
 racer.destroy_node(); rclpy.shutdown()

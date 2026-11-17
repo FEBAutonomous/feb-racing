@@ -757,6 +757,19 @@ class Racer(Node):
             self.get_logger().info("track repair: %d duplicate(s) merged, %d on the track dropped, %d cone(s) filled in; boundaries %s"
                                    % (rp["removed"] - rp.get("off_line", 0), rp.get("off_line", 0), rp["added"], ", ".join("%s %d cones at %.2f m" % ({BLUE: "blue", YELLOW: "yellow"}[c], v["cones"], v["spacing"]) for c, v in rp["chains"].items())))
         if p["freeze_dump"]:
+            self.dump_map(p["freeze_dump"], col, rep, path)
+
+    def dump_map(self, out, col=None, rep=None, path=None):
+        """Debug dump of the whole graph (landmarks with votes/sightings/side, solved path, keyframe log, observations).
+        At closure with the colours and repairs; any time (an unclosed map, the offline harness at the end of a bag)
+        without them, so the lidar truth tools get a path to work with either way."""
+        if col is None:
+            col = self.slam.colour
+        if rep is None:
+            rep = np.zeros(len(self.slam.lhat), dtype=int)
+        if path is None:
+            path = np.asarray(self.slam.xhat)[1:]
+        if True:
             try:
                 import json
                 dump = [{"x": float(x), "y": float(y), "votes": [float(v) for v in self.slam.votes[i, 1:]], "count": int(self.slam.count[i]),
@@ -768,7 +781,7 @@ class Racer(Node):
                 json.dump({"landmarks": dump, "path": self.slam.xhat.tolist(), "kf": self.kf_log, "ghosts_left": [{"x": float(g["pos"][0]), "y": float(g["pos"][1]), "n": int(g["n"])} for g in self.slam.ghosts],
                            "dropped": getattr(self.slam, "dropped", []),
                            "obs": [[int(k), zr.tolist(), [int(c) for c in cc], [float(w) for w in ww]] for k, zr, cc, ww in self.slam.obs],
-                           "new_landmark_dist": float(self.slam.new_landmark_dist)}, open(p["freeze_dump"], "w"))
+                           "new_landmark_dist": float(self.slam.new_landmark_dist)}, open(out, "w"))
             except Exception as e:                  # noqa: BLE001
                 self.get_logger().warn("freeze dump failed: %s" % e)
         self.map_closed_t = time.time()
