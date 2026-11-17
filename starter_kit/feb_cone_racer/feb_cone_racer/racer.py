@@ -83,6 +83,7 @@ DEFAULTS = dict(
     track_repair=True,        # at closure: merge drift duplicates and fill clear gaps along each boundary (repair.py); off = the raw map
     repair_fill_ratio=1.7,    # a gap of at least this many spacings is a missing cone (or cones)
     repair_max_fill=3,        # at most this many cones filled into one gap
+    repair_off_line=0.35,     # m, a cone whose lateral offset from the path differs from its chain neighbours' by more than this has strayed onto the track: dropped
     repair_dup_ratio=0.35,    # two cones of one colour closer than this share of the local spacing are one cone (cones can touch at a drain)
     close_delay_m=1.0,        # m driven on past the loop closure before the map freezes: the start gate gets its sightings from the front
     close_within=0.0,         # m, the lap closes on the first cones only once the car is this close to the start (0 = at once)
@@ -636,6 +637,19 @@ class Racer(Node):
                 # the side that found its pair is the gate; between two singles the weaker evidence goes
                 weak = min(leaders, key=lambda i: (sum(1 for g in gate if np.sign(sides[g]) == np.sign(sides[i])), evidence[i]))
                 gate = [i for i in gate if np.sign(sides[i]) != np.sign(sides[weak])]
+            absorb = np.zeros(len(self.slam.lhat), bool)
+            for i in gate:
+                d = np.linalg.norm(self.slam.lhat - self.slam.lhat[i], axis=1)
+                for j in np.flatnonzero((d < 0.3) & (d > 0.0)):
+                    if j not in gate:
+                        absorb[j] = True                # the same cone, filed again with the camera's blue or yellow
+            if absorb.any():
+                newidx = np.cumsum(~absorb) - 1
+                gate = [int(newidx[i]) for i in gate]
+                self.slam.drop(~absorb)
+                votes = self.slam.votes; rep = self.slam.colour_override; col = self.slam.colour
+                sides = sides[~absorb]
+                self.get_logger().info("gate: %d boundary-coloured double(s) of a gate cone absorbed" % int(absorb.sum()))
             for i in range(len(self.slam.lhat)):
                 if i in gate:
                     rep[i] = ORANGE
@@ -656,7 +670,8 @@ class Racer(Node):
             col_now = np.array([int(rep[i]) if (rep is not None and rep[i] != UNKNOWN and (col[i] == UNKNOWN or weak_now[i])) else int(col[i])
                                 for i in range(len(col))])
             pts, cols, inferred, rp = repair(self.slam.lhat, col_now, self.slam.xhat, fill_ratio=p["repair_fill_ratio"],
-                                             max_fill=int(p["repair_max_fill"]), dup_ratio=p["repair_dup_ratio"], max_offset=p["max_path_dist"] or None)
+                                             max_fill=int(p["repair_max_fill"]), dup_ratio=p["repair_dup_ratio"], max_offset=p["max_path_dist"] or None,
+                                             off_line=p["repair_off_line"])
             if rp["added"] or rp["removed"]:
                 keep = rp["kept"]
                 self.slam.drop(keep)
@@ -676,8 +691,8 @@ class Racer(Node):
                 self.slam.colour_override = rep
                 col = self.slam.colour
                 self.inferred = inferred
-            self.get_logger().info("track repair: %d duplicate(s) merged, %d cone(s) filled in; boundaries %s"
-                                   % (rp["removed"], rp["added"], ", ".join("%s %d cones at %.2f m" % ({BLUE: "blue", YELLOW: "yellow"}[c], v["cones"], v["spacing"]) for c, v in rp["chains"].items())))
+            self.get_logger().info("track repair: %d duplicate(s) merged, %d on the track dropped, %d cone(s) filled in; boundaries %s"
+                                   % (rp["removed"] - rp.get("off_line", 0), rp.get("off_line", 0), rp["added"], ", ".join("%s %d cones at %.2f m" % ({BLUE: "blue", YELLOW: "yellow"}[c], v["cones"], v["spacing"]) for c, v in rp["chains"].items())))
         if p["freeze_dump"]:
             try:
                 import json

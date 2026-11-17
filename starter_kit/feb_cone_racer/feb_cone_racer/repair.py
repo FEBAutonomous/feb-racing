@@ -49,7 +49,7 @@ def from_sd(P, seg, seglen, s0, s, d):
     return foot + d * n
 
 
-def repair(lhat, colour, path, fill_ratio=1.7, max_fill=3, dup_ratio=0.35, min_clearance=0.3, max_offset=None):
+def repair(lhat, colour, path, fill_ratio=1.7, max_fill=3, dup_ratio=0.35, min_clearance=0.3, max_offset=None, off_line=0.35):
     """Returns (points, colours, inferred_mask, report). `inferred_mask` marks the cones that were added.
     `path` is the closed mapping-lap path (the solved keyframe poses)."""
     lhat = np.asarray(lhat, float).reshape(-1, 2)
@@ -75,6 +75,26 @@ def repair(lhat, colour, path, fill_ratio=1.7, max_fill=3, dup_ratio=0.35, min_c
                 continue
         order = np.argsort(sd[:, 0])
         idx, sd = idx[order], sd[order]
+        # a cone that has strayed off its boundary line: its lateral offset from the path differs from its
+        # neighbours' along the chain by more than off_line (a double that drifted onto the track, a sighting of the
+        # other boundary filed with this colour). The chain's offset profile is the median of the four neighbours
+        if len(idx) >= 6 and off_line > 0.0:
+            n_c = len(idx)
+            stray = np.zeros(n_c, bool)
+            for a in range(n_c):
+                around = [sd[(a + o) % n_c, 1] for o in (-2, -1, 1, 2)]
+                # only a cone that has come IN towards the path (a double that drifted onto the track): a cone
+                # standing farther out than its neighbours is left alone, the path may just have cut the corner
+                if abs(sd[a, 1]) < abs(np.median(around)) - off_line:
+                    stray[a] = True
+            if stray.any():
+                keep[idx[stray]] = False
+                report["removed"] += int(stray.sum())
+                report.setdefault("off_line", 0)
+                report["off_line"] += int(stray.sum())
+                idx, sd = idx[~stray], sd[~stray]
+                if len(idx) < 4:
+                    continue
         # spacing along the chain, wrapped round the loop
         nxt = np.roll(np.arange(len(idx)), -1)
         gap_s = (sd[nxt, 0] - sd[:, 0]) % total
