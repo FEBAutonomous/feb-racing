@@ -74,9 +74,9 @@ DEFAULTS = dict(
     push_throttle=0.16, recover_for=8.0,
     # slam
     keyframe_dist=0.4, slam_range=6.0, loc_range=6.0, loc_corridor=2.5, dx_weight=2.0, z_weight=1.0, new_landmark_dist=0.6, icp_gate=1.5,
-    solve_every=3, min_lap_length=15.0,
     min_lap_area=20.0,        # m2 the driven path must enclose before "back at the start" counts as a lap (an out-and-back
-                              # corridor drive returns to its start facing the same way and encloses nothing; 0 = any) order_timeout=10.0, closure_landmarks=10, lap_close_dist=2.0, min_seen=2, icp_min_matches=5, snap_radius=10.0, snap_gate=6.0,
+                              # corridor drive returns to its start facing the same way and encloses nothing; 0 = any)
+    solve_every=3, min_lap_length=15.0, order_timeout=10.0, closure_landmarks=10, lap_close_dist=2.0, min_seen=2, icp_min_matches=5, snap_radius=10.0, snap_gate=6.0,
     # lidar-only cones (the camera never coloured them, typically cones the car hugs): admitted to the map when they are
     # isolated cone-sized clusters within lidar_cone_range, seen at lidar_cone_keyframes keyframes in the same place, and
     # kept at closure only with lidar_min_seen sightings; their colour comes from the side of the driven path. 0 = off
