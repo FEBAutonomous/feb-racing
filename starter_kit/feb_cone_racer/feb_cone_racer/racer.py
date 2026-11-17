@@ -317,7 +317,9 @@ class Racer(Node):
         det_stamp = getattr(self.perception, "det_stamp", 0.0)
         if det_stamp > 0.0:
             age = t - det_stamp
-            self.perception.extra_lag = float(np.clip(age, 0.0, 0.5))
+            # the calibrated camera_lag_s already holds a frame's usual age (under 80 ms at 22 Hz); only the extra age
+            # of a detector that runs behind the camera (a small CPU: 130-300 ms a frame) is added to the lag
+            self.perception.extra_lag = float(np.clip(age - 0.08, 0.0, 0.5))
             if age > p["detector_max_age"]:
                 self.perception.blobs = []             # the detector fell behind: no colour this scan rather than a wrong one
         cones = self.perception.fuse(clusters, self.speed, self.yaw, dt, self.yaw_rate)
