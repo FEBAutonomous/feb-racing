@@ -62,7 +62,7 @@ supervisor:
     speed_axis: 1
     steer_axis: 2
     # the car's guards (2026-10-29, after a 20% pack was driven flat and browned the Jetson out)
-    battery_floor: 11.6            # V resting (the gauge's estimate): below it the car stays IDLE and says "charge it"
+    battery_floor: 11.1            # V resting (3.7 V a cell, about a third left): below it the car stays IDLE and says "charge it"
     battery_cut: 10.0              # V measured under load while driving: STOP, the pack is collapsing
     stall_current: 20.0            # A motor current with the wheels stopped for stall_time: throttle cut
     stall_time: 0.5                # s

@@ -382,7 +382,9 @@ class Racer(Node):
             # big clusters are the start gate's big cones, which stand at the start line and nowhere else (the rules):
             # within gate_radius of where the lap began they are orange cones, elsewhere a wide thing is not a cone
             picked = [(x, y, w) for (x, y), ok, w in zip(self.perception.unknown, iso, wid)
-                      if ok and 0.3 < math.hypot(x, y) < p["lidar_cone_range"] and (w < p["big_cone_width"] or at_gate(x, y))]
+                      if ok and x > -0.3 and 0.3 < math.hypot(x, y) < p["lidar_cone_range"] and (w < p["big_cone_width"] or at_gate(x, y))]
+            # (x > -0.3: only things beside or ahead of the car are candidates. A cone the car hugs is admitted while it
+            # is still ahead; what is only ever behind the car (a door jamb at the start, legs) is not a cone)
             ghosts = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, w in picked]).reshape(-1, 2)
             ghost_colour = np.array([ORANGE if w >= p["big_cone_width"] > 0.0 else UNKNOWN for x, y, w in picked], dtype=int)   # a big cone is orange
 
@@ -479,9 +481,19 @@ class Racer(Node):
             # ...except while the car still waits at the start line: a keyframe every half second there, so the gate
             # cones ahead (the only time the camera sees them from the front, before they are beside the car) get
             # their sightings in before the lap moves off
-            # (a handful of them: a car parked at the line for minutes must not fill the graph with still frames)
-            waiting = self.travelled < 0.5 and self.kf_log and self.last_t - self.kf_log[-1][0] >= 0.5 and self.keyframes < 8
-            if not waiting:
+            waiting = self.travelled < 0.5 and self.kf_log and self.last_t - self.kf_log[-1][0] >= 0.5
+            if waiting and self.keyframes >= 8:
+                # a car parked at the line for minutes must not fill the graph with still frames: after eight of them
+                # the map starts over from the same spot, so it stays small and shows what the detector sees now
+                # (the camera and the model come up seconds after the lidar; the first map is lidar-only)
+                self.slam = GraphSLAM(tuple(self.pose), p["dx_weight"], p["z_weight"], p["new_landmark_dist"], p["icp_gate"],
+                                      icp_min_matches=int(p["icp_min_matches"]))
+                self.keyframes, self.kf_log, self.start = 0, [], None
+                self._shown_colour = {}
+                if not getattr(self, "_restarted", False):
+                    self._restarted = True
+                    self.get_logger().info("parked: the map restarts every eight keyframes until the car moves")
+            elif not waiting:
                 return
         # back near the start with the orange gate in view: close the loop with a wide net, so
         # odometry drift over a long lap cannot leave the start cones unmatched
