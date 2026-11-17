@@ -1480,6 +1480,7 @@ class Racer(Node):
                 q = self.slam.lhat[i]
                 if np.dot(q - self.pose, h) < -0.5 and np.linalg.norm(path - q, axis=1).min() > self.p["max_path_dist"]:
                     hidden[i] = True
+        for i, (x, y) in enumerate(self.slam.lhat):
             if i < len(counts) and counts[i] < 2 and not (inf_all is not None and i < len(inf_all) and inf_all[i]):
                 continue
             if i < len(hidden) and hidden[i]:
