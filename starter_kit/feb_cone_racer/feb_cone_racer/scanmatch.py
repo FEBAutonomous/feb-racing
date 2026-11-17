@@ -35,6 +35,8 @@ class ScanOdometry:
         self.matched = 0.0               # share of points matched on the last scan
         self.ok = False                  # whether the last scan's match was accepted
         self.rejected = 0
+        self.unmatched_scans = 0         # consecutive still scans that did not match the submap
+        self.displaced = False           # the parked car was carried elsewhere (see update)
 
     def points(self, msg):
         rg = np.asarray(msg.ranges, dtype=float)
@@ -61,10 +63,19 @@ class ScanOdometry:
             self.ok = True
             return np.zeros(2), self.yaw
         if still:
-            # a parked car does not move because people walk past the lidar: the match is skipped, the pose holds
+            # a parked car does not move because people walk past the lidar: the match is skipped, the pose holds.
+            # But the scan must still look like this place: when most of it matches nothing in the submap for a
+            # second (five scans), the car was carried away and put down elsewhere; `displaced` tells the racer
             self.last_imu = imu_yaw
             self.ok = True
+            if self.tree is not None and len(P) >= 50:
+                W = P @ _rot(self.yaw).T + self.pose
+                d, _ = self.tree.query(W, distance_upper_bound=self.p["match_dist"])
+                self.matched = float(np.isfinite(d).mean())
+                self.unmatched_scans = self.unmatched_scans + 1 if self.matched < self.p["min_matched"] else 0
+                self.displaced = self.unmatched_scans >= 5
             return np.zeros(2), self.yaw
+        self.unmatched_scans, self.displaced = 0, False
         # the guess: turn as the IMU turned, move as the wheels moved, along the heading
         dyaw = math.atan2(math.sin(imu_yaw - self.last_imu), math.cos(imu_yaw - self.last_imu))
         self.last_imu = imu_yaw

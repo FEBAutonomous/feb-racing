@@ -31,6 +31,7 @@ from std_msgs.msg import Float32, String
 
 from .camera_lock import CameraLock
 from .controller import RaceController, wrap
+from .scanmatch import ScanOdometry
 from .graphslam import GraphSLAM
 from .params import RACE
 from .perception import BLUE, ORANGE, UNKNOWN, YELLOW, Perception
@@ -78,6 +79,8 @@ DEFAULTS = dict(
     # isolated cone-sized clusters within lidar_cone_range, seen at lidar_cone_keyframes keyframes in the same place, and
     # kept at closure only with lidar_min_seen sightings; their colour comes from the side of the driven path. 0 = off
     lidar_cone_range=0.0, lidar_cone_keyframes=3, lidar_min_seen=3, cone_isolation=0.45,
+    lidar_cone_min_x=-0.3,    # m, lidar-only candidates must be at least this far ahead (negative: a little behind the lidar)
+    parked_restart=8,         # keyframes a parked car keeps before its map starts over (0: never)
     merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
     never_together_dist=0.4,  # m, at closure two landmarks never seen in one scan and closer than this are one cone (a drift double)
     max_path_dist=0.0,        # m, at closure a landmark farther than this from the driven path is dropped (0 = off; the car config sets it)
@@ -136,7 +139,6 @@ class Racer(Node):
             self.lock_timer = self.create_timer(1.0, lambda: self.camera_lock.apply() and self.lock_timer.cancel())
         self.slam = GraphSLAM((0.0, 0.0), p["dx_weight"], p["z_weight"], p["new_landmark_dist"], p["icp_gate"],
                               icp_min_matches=int(p["icp_min_matches"]))
-        from .scanmatch import ScanOdometry
         self.scan_odo = ScanOdometry()
         try:
             from .mpc import KinematicMPC
@@ -344,6 +346,17 @@ class Racer(Node):
             # the IMU only give it the starting guess. The heading it settles on is the heading the map is built in
             still = abs(self.speed) < 0.05 and abs(self.yaw_rate) < 0.03       # wheels and gyro both quiet: parked
             dx, yaw_sm = self.scan_odo.update(msg, self.yaw, ds, still=still)
+            if still and self.scan_odo.displaced and self.mode == "MAPPING" and self.keyframes > 0:
+                # the wheels say parked but the scan no longer matches where the map says we are: the car was carried
+                # somewhere else. The map it had is of another place: start over here (the scan odometry too)
+                self.get_logger().warn("the car was moved by hand: the map starts over here")
+                self.scan_odo = ScanOdometry()
+                dx, yaw_sm = self.scan_odo.update(msg, self.yaw, 0.0)
+                self.slam = GraphSLAM(tuple(self.pose), p["dx_weight"], p["z_weight"], p["new_landmark_dist"], p["icp_gate"],
+                                      icp_min_matches=int(p["icp_min_matches"]))
+                self.keyframes, self.kf_log, self.since_key_dist, self.travelled = 0, [], 0.0, 0.0
+                self.start, self.lap_start_t = (self.pose.copy(), self.yaw), self.last_t
+                self._shown_colour = {}
             self.yaw = yaw_sm
             ds = float(np.linalg.norm(dx))
         else:
@@ -382,9 +395,9 @@ class Racer(Node):
             # big clusters are the start gate's big cones, which stand at the start line and nowhere else (the rules):
             # within gate_radius of where the lap began they are orange cones, elsewhere a wide thing is not a cone
             picked = [(x, y, w) for (x, y), ok, w in zip(self.perception.unknown, iso, wid)
-                      if ok and x > -0.3 and 0.3 < math.hypot(x, y) < p["lidar_cone_range"] and (w < p["big_cone_width"] or at_gate(x, y))]
-            # (x > -0.3: only things beside or ahead of the car are candidates. A cone the car hugs is admitted while it
-            # is still ahead; what is only ever behind the car (a door jamb at the start, legs) is not a cone)
+                      if ok and x > p["lidar_cone_min_x"] and 0.3 < math.hypot(x, y) < p["lidar_cone_range"] and (w < p["big_cone_width"] or at_gate(x, y))]
+            # (lidar_cone_min_x: only things beside or ahead of the car are candidates. A cone the car hugs is admitted
+            # while it is still ahead; what is only ever behind the car (a door jamb at the start, legs) is not a cone)
             ghosts = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, w in picked]).reshape(-1, 2)
             ghost_colour = np.array([ORANGE if w >= p["big_cone_width"] > 0.0 else UNKNOWN for x, y, w in picked], dtype=int)   # a big cone is orange
 
@@ -482,17 +495,18 @@ class Racer(Node):
             # cones ahead (the only time the camera sees them from the front, before they are beside the car) get
             # their sightings in before the lap moves off
             waiting = self.travelled < 0.5 and self.kf_log and self.last_t - self.kf_log[-1][0] >= 0.5
-            if waiting and self.keyframes >= 8:
+            if waiting and p["parked_restart"] > 0 and self.keyframes >= p["parked_restart"]:
                 # a car parked at the line for minutes must not fill the graph with still frames: after eight of them
                 # the map starts over from the same spot, so it stays small and shows what the detector sees now
                 # (the camera and the model come up seconds after the lidar; the first map is lidar-only)
                 self.slam = GraphSLAM(tuple(self.pose), p["dx_weight"], p["z_weight"], p["new_landmark_dist"], p["icp_gate"],
                                       icp_min_matches=int(p["icp_min_matches"]))
-                self.keyframes, self.kf_log, self.start = 0, [], None
+                self.keyframes, self.kf_log = 0, []
+                self.start, self.lap_start_t = (self.pose.copy(), self.yaw), self.last_t
                 self._shown_colour = {}
                 if not getattr(self, "_restarted", False):
                     self._restarted = True
-                    self.get_logger().info("parked: the map restarts every eight keyframes until the car moves")
+                    self.get_logger().info("parked: the map restarts every %d keyframes until the car moves" % p["parked_restart"])
             elif not waiting:
                 return
         # back near the start with the orange gate in view: close the loop with a wide net, so
