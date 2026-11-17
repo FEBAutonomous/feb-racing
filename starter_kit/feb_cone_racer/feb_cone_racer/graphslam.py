@@ -42,8 +42,9 @@ class GraphSLAM:
         self.count = np.zeros(0, dtype=int)    # per landmark: observations
         self.lidar_seen = np.zeros(0, dtype=int)   # per landmark: sightings the camera did not colour (lidar-only, see _admit_ghosts)
         self.cam_miss = np.zeros(0, dtype=int)     # per landmark: keyframes in a row it stood in the camera's view, close, and got no box
+        self.kfs_live = []                         # per landmark: the keyframes it was observed at (co-visibility during the lap)
         self.ghost_cam_miss_max = 2                # a ghost track the camera looked at this often without a box is never promoted
-        self.ghost_cam_miss_max_wide = 4           # a wide one (a big cone candidate) gets a longer look: big cones are boxed less surely
+        self.ghost_cam_miss_max_wide = 3           # a wide one (a big cone candidate): all three of its keyframes in view without a box
         self.wide = np.zeros(0, dtype=int)         # per landmark: sightings as a big (wide) cluster; an orange sighting of weight 0 is one
         self.x.append(0)
         self.nvars = 2
@@ -255,6 +256,7 @@ class GraphSLAM:
                 self.count = np.append(self.count, 0)
                 self.lidar_seen = np.append(self.lidar_seen, 0)
                 self.cam_miss = np.append(self.cam_miss, 0)
+                self.kfs_live.append(set())
                 self.wide = np.append(self.wide, 0)
                 self.l.append(self.nvars)
                 self.nvars += 2
@@ -262,6 +264,8 @@ class GraphSLAM:
             taken[j] = True
             self.votes[j, colour[i]] += weight[i]
             self.count[j] += 1
+            if j < len(self.kfs_live):
+                self.kfs_live[j].add(kf)
             if colour[i] == UNKNOWN or (colour[i] == ORANGE and weight[i] <= 0.0):      # a lidar sighting, uncoloured or wide
                 self.lidar_seen[j] += 1
                 if j < len(self.cam_miss) and i < len(in_cam) and in_cam[i]:
@@ -478,9 +482,11 @@ class GraphSLAM:
         self.merge_log = getattr(self, "merge_log", [0, 0])
         self.frozen = True
 
-    def merge_live(self, radius=0.35):
+    def merge_live(self, radius=0.35, never_together=0.5):
         """Mid-lap duplicate merge: two landmarks closer than `radius` whose colours do not disagree (same, or one
-        unknown) are one cone filed twice (drift between passes, a flickering box). The later one's observation rows
+        unknown) are one cone filed twice (drift between passes, a flickering box); so are two closer than
+        `never_together` that no keyframe ever saw together (two real cones half a metre apart are seen together in
+        scan after scan; big orange cones excepted, the gate pairs stand that close). The later one's observation rows
         are re-pointed at the earlier one, its votes and counts pooled, and it leaves the arrays; its variable slot
         keeps a tiny anchor so the system stays regular. Returns how many merged."""
         merged = 0
@@ -490,7 +496,10 @@ class GraphSLAM:
             while j < len(self.lhat):
                 dij = np.linalg.norm(self.lhat[i] - self.lhat[j])
                 ci, cj = int(self.colour[i]), int(self.colour[j])
-                if dij < radius and (ci == cj or ci == UNKNOWN or cj == UNKNOWN):
+                compatible = ci == cj or ci == UNKNOWN or cj == UNKNOWN
+                apart = (len(self.kfs_live) == len(self.lhat) and len(self.kfs_live[i] & self.kfs_live[j]) == 0
+                         and ORANGE not in (ci, cj) and dij < never_together)
+                if compatible and (dij < radius or apart):
                     li, lj = self.l[i], self.l[j]
                     self.rows = [(r, (li if c == lj else li + 1 if c == lj + 1 else c), v) for r, c, v in self.rows]
                     self._eq([(lj, 1e-3)], float(self.lhat[j, 0]) * 1e-3)        # the orphan variable stays pinned
@@ -508,6 +517,8 @@ class GraphSLAM:
                         self.cam_miss[i] = min(self.cam_miss[i], self.cam_miss[j])
                     if hasattr(self, "kfs") and len(self.kfs) == len(keep):
                         self.kfs[i] = self.kfs[i] | self.kfs[j]
+                    if len(self.kfs_live) == len(keep):
+                        self.kfs_live[i] = self.kfs_live[i] | self.kfs_live[j]
                     del self.l[j]
                     self.drop(keep)
                     self.last_matched = []
@@ -529,6 +540,8 @@ class GraphSLAM:
             self.wide = self.wide[keep]
         if hasattr(self, "kfs") and len(self.kfs) == len(keep):
             self.kfs = [k for k, ok in zip(self.kfs, keep) if ok]
+        if len(self.kfs_live) == len(keep):
+            self.kfs_live = [k for k, ok in zip(self.kfs_live, keep) if ok]
         if self.colour_override is not None and len(self.colour_override) == len(keep):
             self.colour_override = self.colour_override[keep]
 
