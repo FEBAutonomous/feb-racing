@@ -128,7 +128,15 @@
       img.src = "data:image/jpeg;base64," + d.jpg;
     }
     if (T["/scan_full"] && T["/scan_full"].data) { scan = T["/scan_full"].data; schedule(); }
+    // the racer's own detector boxes (/feb/detections, JSON): when they flow, the page shows those instead of the
+    // HSV masks, since that is what colours the map when the driver runs detector:=cnn
+    if (T["/feb/detections"] && T["/feb/detections"].data !== undefined) {
+      let d = T["/feb/detections"].data; if (typeof d === "string") { try { d = JSON.parse(d); } catch (e) { d = null; } }
+      if (d && d.boxes) { DET = d; DET_T = performance.now(); schedule(); }
+    }
   }
+  let DET = null, DET_T = 0;
+  const detectorMode = () => DET && performance.now() - DET_T < 2000;
   setInterval(() => { fetch("/cmd?x=frame").catch(() => {}); fetch("/cmd?x=scan").catch(() => {}); }, 700);
 
   // ---- processing (ports of perception.py: on_image, clusters, pixel_column, assign)
@@ -189,7 +197,10 @@
     const masks = { blue: new Uint8Array(N), yellow: new Uint8Array(N), orange: new Uint8Array(N) };
     const top = Math.floor(P.band_top * H), bottom = Math.floor(P.band_bottom * H);
     const overlay = ctx.createImageData(W, H), od = overlay.data;
+    const useDet = detectorMode();
+    for (const id of ["colours", "band"]) { const panel = $(id).closest("section"); if (panel) panel.style.display = useDet ? "none" : ""; }
     for (let i = 0; i < N; i++) {
+      if (useDet) break;                 // detector mode: no masks, the boxes come from the racer
       const [h, s, v] = hsvOf(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]); vmap[i] = v;
       const y = (i / W) | 0; if (y < top || y >= bottom) continue;
       for (const c of ["blue", "yellow", "orange"]) { const b = P["hsv_" + c]; if (h >= b[0] && h <= b[3] && s >= b[1] && s <= b[4] && v >= b[2] && v <= b[5]) { masks[c][i] = 1; const rgb = RGB[c]; od[i * 4] = rgb[0]; od[i * 4 + 1] = rgb[1]; od[i * 4 + 2] = rgb[2]; od[i * 4 + 3] = 150; } }
@@ -203,9 +214,15 @@
     c2.setLineDash([6 * dpr, 6 * dpr]); c2.lineWidth = 1.5 * dpr;
     for (const [k, col] of [["band_top", "#aab2c5"], ["band_bottom", "#aab2c5"], ["band_floor", "#ff9f43"]]) { const y = Y(P[k] * H); c2.strokeStyle = col; c2.beginPath(); c2.moveTo(0, y); c2.lineTo(hud.width, y); c2.stroke(); c2.fillStyle = col; c2.font = font(11); c2.fillText(k.replace("band_", ""), 6 * dpr, y - 4 * dpr); }
     c2.setLineDash([]);
-    // blobs
-    let all = []; for (const c of ["blue", "yellow", "orange"]) all = all.concat(mergeStripes(blobs(masks[c], W, H, c)));
-    for (const b of all) { c2.strokeStyle = COL[b.label]; c2.lineWidth = 2 * dpr; if (b.dim) c2.setLineDash([3 * dpr, 3 * dpr]); c2.strokeRect(X(b.x0), Y(b.y0), X(b.x1 - b.x0 + 1), Y(b.y1 - b.y0 + 1)); c2.setLineDash([]); c2.fillStyle = COL[b.label]; c2.font = font(11, true); c2.fillText(b.area + (b.pieces > 1 ? " ×" + b.pieces : "") + (b.dim ? " dim" : ""), X(b.x0), Y(b.y0) - 3 * dpr); }
+    // blobs: the detector's boxes when the racer publishes them, else the HSV blobs computed here
+    let all = [];
+    if (useDet) {
+      const kx = W / (DET.w || W), ky = H / (DET.h || H);
+      all = (DET.boxes || []).map(([cls, conf, x0, y0, x1, y1]) => ({ label: ["blue", "yellow", "orange"][cls] || "blue", u: (x0 + x1) / 2 * kx, x0: x0 * kx, x1: x1 * kx, y0: y0 * ky, y1: y1 * ky, area: Math.round((x1 - x0) * (y1 - y0) * kx * ky), conf, dim: false, pieces: 1 }));
+    } else {
+      for (const c of ["blue", "yellow", "orange"]) all = all.concat(mergeStripes(blobs(masks[c], W, H, c)));
+    }
+    for (const b of all) { c2.strokeStyle = COL[b.label]; c2.lineWidth = 2 * dpr; if (b.dim) c2.setLineDash([3 * dpr, 3 * dpr]); c2.strokeRect(X(b.x0), Y(b.y0), X(b.x1 - b.x0 + 1), Y(b.y1 - b.y0 + 1)); c2.setLineDash([]); c2.fillStyle = COL[b.label]; c2.font = font(11, true); c2.fillText(useDet ? b.label + " " + b.conf.toFixed(2) : b.area + (b.pieces > 1 ? " ×" + b.pieces : "") + (b.dim ? " dim" : ""), X(b.x0), Y(b.y0) - 3 * dpr); }
     // lidar cones -> columns, coloured by the nearest blob within tolerance (one blob per cone, closest first)
     let cl = scan ? clusters(scan) : [], matched = 0;
     const cols = cl.map(([x, y]) => column(x, y, W)); const tol = P.match_px_frac * W; const taken = new Set(), done = new Set(), pairs = [];
@@ -215,7 +232,7 @@
     cl.forEach((c, i) => { const u = cols[i]; if (isNaN(u) || u < 0 || u > W) return; const col = colour[i] ? COL[colour[i]] : "#8a93a8"; c2.strokeStyle = col; c2.lineWidth = 3 * dpr; c2.beginPath(); c2.moveTo(X(u), Y(top)); c2.lineTo(X(u), Y(bottom)); c2.stroke();
       c2.fillStyle = col; c2.font = font(11, true); c2.fillText(Math.hypot(c[0], c[1]).toFixed(2) + " m", X(u) + 4 * dpr, Y(bottom) + 14 * dpr); });
     const count = l => all.filter(b => b.label === l).length;
-    $("stats").innerHTML = `<span>lidar cones <b>${cl.length}</b></span><span>in image <b>${cols.filter(u => !isNaN(u) && u >= 0 && u <= W).length}</b></span><span>blobs <b style="color:${COL.blue}">${count("blue")}</b> / <b style="color:${COL.yellow}">${count("yellow")}</b> / <b style="color:${COL.orange}">${count("orange")}</b></span><span>coloured cones <b>${matched}</b></span>${frame ? "" : "<span>no frame yet: is the camera publishing?</span>"}`;
+    $("stats").innerHTML = `${useDet ? "<span><b>detector mode</b>: boxes from the racer's CNN (masks hidden)</span>" : ""}<span>lidar cones <b>${cl.length}</b></span><span>in image <b>${cols.filter(u => !isNaN(u) && u >= 0 && u <= W).length}</b></span><span>${useDet ? "boxes" : "blobs"} <b style="color:${COL.blue}">${count("blue")}</b> / <b style="color:${COL.yellow}">${count("yellow")}</b> / <b style="color:${COL.orange}">${count("orange")}</b></span><span>coloured cones <b>${matched}</b></span>${frame ? "" : "<span>no frame yet: is the camera publishing?</span>"}`;
     $("yaml").value = toYaml();
   }
 
