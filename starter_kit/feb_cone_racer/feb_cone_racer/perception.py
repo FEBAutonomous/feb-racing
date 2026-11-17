@@ -160,32 +160,47 @@ class Perception:
         if self.blobs and self.image_width:
             tol = self.p["match_px_frac"] * self.image_width
             fx = (self.image_width / 2.0) / math.tan(math.radians(self.p["camera_hfov_deg"]) / 2.0)
-            def size_ok(i, b):
-                """a detector box (one with a confidence) must be about as tall as a cone at that range:
-                0.33 m for the big orange ones, 0.22 m for the small; a factor two either way is allowed"""
-                if len(b) <= 6:
-                    return True
-                rng = max(0.3, math.hypot(clusters[i][0] - self.p["camera_ahead"], clusters[i][1] - self.p["camera_lateral"]))
-                expect = fx * (0.33 if b[0] == ORANGE else 0.22) / rng
-                return 0.5 <= (b[3] - b[2]) / expect <= 2.0
-            pairs = sorted((abs(b[1] - cols[i]), i, k) for i in range(n) if not math.isnan(cols[i])
-                           for k, b in enumerate(self.blobs) if abs(b[1] - cols[i]) < tol and size_ok(i, b))
-            done = set()
-            for d, i, k in pairs:
-                if i in done or k in taken:
+            # Joint assignment of boxes to lidar cones (the AMZ / MIT Driverless recipe: lidar gives the range, the
+            # camera the colour, and the two are tied by where a cone of that size at that range must appear in the
+            # image). Each pair costs its column error plus how far the box height is from a cone's height at the
+            # cluster's range; the cheapest one-to-one assignment over all pairs wins (Hungarian), so a big cone's
+            # tall box goes to the cluster at the range that fits it, not to the small cone standing in front of it
+            # on the same bearing. A box that fits no cluster, or a cone with no box, stays unmatched.
+            m = len(self.blobs)
+            cost = np.full((n, m), 1e6)
+            big = np.zeros((n, m), dtype=bool)
+            for i in range(n):
+                if math.isnan(cols[i]):
                     continue
-                done.add(i), taken.add(k)
-                colour[i], dim[i] = self.blobs[k][0], self.blobs[k][5]
-                if len(self.blobs[k]) > 6:
-                    conf[i] = float(self.blobs[k][6])
-                    # size before class: a box clearly taller than a small cone at this range is a big cone, and big
-                    # cones are orange whatever the class says (the detector, trained on small cones mostly, calls a
-                    # big orange cone up close "blue" with confidence); a box the height of a small cone that the
-                    # class calls orange is a small cone with the gate behind it: no colour
-                    b = self.blobs[k]
-                    rng = max(0.3, math.hypot(clusters[i][0] - self.p["camera_ahead"], clusters[i][1] - self.p["camera_lateral"]))
-                    ratio = (b[3] - b[2]) / (fx * 0.22 / rng)
-                    if ratio >= 1.35:
+                rng = max(0.3, math.hypot(clusters[i][0] - self.p["camera_ahead"], clusters[i][1] - self.p["camera_lateral"]))
+                for k, b in enumerate(self.blobs):
+                    dc = abs(b[1] - cols[i])
+                    if dc >= tol:
+                        continue
+                    if len(b) > 6:                           # a detector box: its height must fit a cone at this range
+                        h = b[3] - b[2]
+                        r_small, r_big = h / (fx * 0.22 / rng), h / (fx * 0.33 / rng)
+                        is_big = abs(math.log(r_big)) < abs(math.log(r_small))
+                        ratio = r_big if is_big else r_small
+                        if not 0.5 <= ratio <= 2.0:
+                            continue
+                        cost[i, k] = (dc / tol) ** 2 + 4.0 * math.log(ratio) ** 2
+                        big[i, k] = is_big and r_small >= 1.35
+                    else:
+                        cost[i, k] = (dc / tol) ** 2
+            from scipy.optimize import linear_sum_assignment
+            rows, colsk = linear_sum_assignment(cost)
+            for i, k in zip(rows, colsk):
+                if cost[i, k] >= 1e6:
+                    continue
+                b = self.blobs[k]
+                colour[i], dim[i] = b[0], b[5]
+                if len(b) > 6:
+                    conf[i] = float(b[6])
+                    # size before class: a box the height of a big cone at this range is a big cone, and big cones
+                    # are orange whatever the class says; a small-cone-sized box the class calls orange is a small
+                    # cone with the gate behind it: no colour
+                    if big[i, k]:
                         colour[i], conf[i], self._big[i] = ORANGE, max(conf[i], 1.0), True
                     elif colour[i] == ORANGE:
                         colour[i] = None

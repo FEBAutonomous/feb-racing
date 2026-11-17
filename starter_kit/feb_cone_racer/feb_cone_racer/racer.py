@@ -83,8 +83,9 @@ DEFAULTS = dict(
     repair_fill_ratio=1.7,    # a gap of at least this many spacings is a missing cone (or cones)
     repair_max_fill=3,        # at most this many cones filled into one gap
     repair_dup_ratio=0.35,    # two cones of one colour closer than this share of the local spacing are one cone (cones can touch at a drain)
-    close_delay_m=1.5,        # m driven on past the loop closure before the map freezes: the start gate gets its sightings from the front
+    close_delay_m=1.0,        # m driven on past the loop closure before the map freezes: the start gate gets its sightings from the front
     close_within=0.0,         # m, the lap closes on the first cones only once the car is this close to the start (0 = at once)
+    gate_max_width=4.0,       # m, the farthest the two sides of the start gate can stand apart
     gate_pair_dist=0.75,      # m, the big cones of the start gate stand in pairs (or a row) with neighbours closer than this
     gate_radius=3.5,          # m from the lap's start within which big (orange) cones stand; an orange or wide thing farther out is not a cone
     big_cone_width=0.11,      # m, at this lidar's height (near the tip of a small cone) a small cone shows 0.04-0.08 m, a big one 0.12-0.16; a cluster at least this wide may be a big cone, which stands only at the start gate (0 = off)
@@ -159,6 +160,7 @@ class Racer(Node):
         self.keyframes = 0
         self.kf_log = []                 # (scan time, heading) of every keyframe; the solved positions are slam.xhat[1:]
         self.close_at = None             # travelled distance at which the closed lap's map freezes (close_delay_m past the closure)
+        self.gate_ids = set()            # landmark indices of the start gate's big cones, chosen at closure
         self.mode = "MAPPING"
         self.track = None
         self.raceline = None             # (N,2)
@@ -554,35 +556,56 @@ class Racer(Node):
                 d = side_of_path(path, self.slam.lhat[i])
                 if rep[i] == UNKNOWN or (weak[i] and abs(d) > 0.3):
                     rep[i] = (BLUE if d > 0 else YELLOW) if left_is_blue else (YELLOW if d > 0 else BLUE)
-        # the gate cones come in pairs half a metre apart: an uncoloured (or doubtfully coloured) landmark at the gate
-        # that stood beside an orange cone in the same scans is the other cone of its pair
-        if p["gate_radius"] > 0.0 and hasattr(self.slam, "kfs") and len(self.slam.kfs) == len(self.slam.lhat) and self.start is not None:
+        # the start gate is two big orange cones on the left of the track and two on the right, close to where the lap
+        # began. The map's orange is decided as that structure: on each side of the driven path the landmark near the
+        # start with the strongest orange evidence (camera orange votes, big boxes, wide lidar clusters) is a gate
+        # cone, its partner is the nearest big-looking neighbour within gate_pair_dist on the same side; those are
+        # orange and nothing else is (a stray orange box on a boundary cone does not make it orange)
+        if p["gate_radius"] > 0.0 and self.start is not None and len(path) >= 8:
+            votes = self.slam.votes
             wide = self.slam.wide if len(self.slam.wide) == len(self.slam.lhat) else np.zeros(len(self.slam.lhat), int)
-            saved_override = self.slam.colour_override
-            self.slam.colour_override = None
-            voted = self.slam.colour.copy()                 # the camera's and the lidar's word, before the side repair
-            self.slam.colour_override = saved_override
-            # the gate's big cones stand in pairs (or a start pair and a finish pair in a row): from each orange cone,
-            # the nearest cone within a pair's spacing that was also seen big and stood beside it in the same scans is
-            # orange too (the camera never gets its own box on a cone standing behind another); the chain is followed
-            # on, so a row of four is coloured from one
-            votes_all = self.slam.votes
-            at_gate = np.linalg.norm(self.slam.lhat - self.start[0], axis=1) < p["gate_radius"]
-            for _round in range(2):
-                changed = False
-                for i in np.flatnonzero((voted == ORANGE) & at_gate):
-                    d = np.linalg.norm(self.slam.lhat - self.slam.lhat[i], axis=1)
-                    # a partner was seen big by the lidar more than once, the camera never called it blue or yellow
-                    # with any conviction, and it stands at the gate too
-                    cands = [j for j in np.flatnonzero((d > 0.25) & (d < p["gate_pair_dist"]) & at_gate)
-                             if wide[j] >= 2 and voted[j] != ORANGE and votes_all[j, 1:3].max() < 1.0 and len(self.slam.kfs[i] & self.slam.kfs[j]) >= 2]
-                    if cands:
-                        j = int(min(cands, key=lambda j: d[j]))
-                        rep[j] = ORANGE; voted[j] = ORANGE; changed = True
-                        self.slam.votes[j, 3] = max(self.slam.votes[j, 3], self.slam.votes[j, 1:].max() + 1.0)   # and it stays orange in the published map
-                        self.get_logger().info("gate: landmark %d stands beside orange %d (%.2f m): orange too" % (j, i, d[j]))
-                if not changed:
-                    break
+            kfs = self.slam.kfs if hasattr(self.slam, "kfs") and len(self.slam.kfs) == len(self.slam.lhat) else None
+            sides = np.array([side_of_path(path, q) for q in self.slam.lhat])
+            near = np.linalg.norm(self.slam.lhat - self.start[0], axis=1) < p["gate_radius"]
+            # a big cone is wide to the lidar whenever it is close: the camera's orange only counts on a cone the lidar
+            # saw wide at least twice, and persistent width is evidence of its own (a couple of tall boxes on a small
+            # cone are not)
+            evidence = np.where(wide >= 2, votes[:, 3], 0.0) + 0.3 * np.minimum(wide, 10)
+            gate = []
+            for sign in (1.0, -1.0):
+                cand = np.flatnonzero(near & (np.sign(sides) == sign) & (evidence >= 1.0) & (wide >= 2))
+                if not len(cand):
+                    continue
+                i = int(cand[np.argmax(evidence[cand])])
+                gate.append(i)
+                d = np.linalg.norm(self.slam.lhat - self.slam.lhat[i], axis=1)
+                mates = [j for j in np.flatnonzero((d > 0.25) & (d < p["gate_pair_dist"]) & near & (np.sign(sides) == sign)) if j != i and wide[j] >= 2]
+                if mates:
+                    # the partner: co-visible if possible (two things seen at once are two things), else the nearest
+                    cov = [j for j in mates if kfs is not None and len(kfs[i] & kfs[j]) >= 2]
+                    j = int(min(cov or mates, key=lambda j: d[j]))
+                    gate.append(j)
+            # the two sides of a gate face each other across the track: a side whose cones stand farther than
+            # gate_max_width from the other side's is not the gate (the weaker side is dropped)
+            leaders = []
+            for i in gate:
+                if not any(np.sign(sides[i]) == np.sign(sides[l]) for l in leaders):
+                    leaders.append(i)
+            if len(leaders) == 2 and np.linalg.norm(self.slam.lhat[leaders[0]] - self.slam.lhat[leaders[1]]) > p["gate_max_width"]:
+                # the side that found its pair is the gate; between two singles the weaker evidence goes
+                weak = min(leaders, key=lambda i: (sum(1 for g in gate if np.sign(sides[g]) == np.sign(sides[i])), evidence[i]))
+                gate = [i for i in gate if np.sign(sides[i]) != np.sign(sides[weak])]
+            for i in range(len(self.slam.lhat)):
+                if i in gate:
+                    rep[i] = ORANGE
+                    votes[i, 3] = max(votes[i, 3], votes[i, 1:].max() + 1.0)
+                elif votes[i, 3] > 0.0:
+                    votes[i, 3] = 0.0                  # orange lives only at the gate
+                    if rep[i] == ORANGE:
+                        d_ = side_of_path(path, self.slam.lhat[i])
+                        rep[i] = (BLUE if d_ > 0 else YELLOW) if left_is_blue else (YELLOW if d_ > 0 else BLUE)
+            self.gate_ids = set(gate)           # the published map keeps these orange whatever the track builder repaints
+            self.get_logger().info("gate: %d orange cones chosen (%s)" % (len(gate), ", ".join("left" if sides[i] > 0 else "right" for i in gate)))
         # track repair: the finished map read as two boundaries along the lap; drift duplicates merged, clear gaps
         # filled with cones interpolated along the path (repair.py; one switch, track_repair, to turn it off)
         self.inferred = np.zeros(len(self.slam.lhat), bool)
@@ -596,6 +619,8 @@ class Racer(Node):
             if rp["added"] or rp["removed"]:
                 keep = rp["kept"]
                 self.slam.drop(keep)
+                newidx = np.cumsum(keep) - 1
+                self.gate_ids = {int(newidx[i]) for i in getattr(self, "gate_ids", set()) if i < len(keep) and keep[i]}
                 n_add = int(inferred.sum())
                 if n_add:
                     self.slam.lhat = np.vstack([self.slam.lhat, pts[inferred]])
@@ -1266,6 +1291,8 @@ class Racer(Node):
             repaired = rep is not None and i < len(rep) and rep[i] in (BLUE, YELLOW, ORANGE) and (c == UNKNOWN or v.max() < 1.0)
             if repaired:
                 c = int(rep[i])                 # ...and so does a cone the camera coloured only once, doubtfully
+            if i in getattr(self, "gate_ids", ()):
+                c, repaired = ORANGE, True      # the start gate's big cones (finish_mapping), whatever the boundary repaint says
             # hysteresis: once shown, a colour only flips when the challenger leads by a full vote (not for a
             # colour the closed map assigned from the path: that one is final)
             prev = shown.get(i)
