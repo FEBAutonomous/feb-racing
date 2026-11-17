@@ -148,6 +148,7 @@ class Perception:
         return w / 2.0 - fx * math.tan(bearing) + self.p["camera_col_bias"]
 
     def assign(self, clusters, yaw_rate=0.0):
+        blobs = self.blobs      # one snapshot: the detector thread replaces the list while this runs
         """One-to-one matching of lidar cones to camera blobs by image column, closest pairs
         first, so two cones cannot claim the same blob. Returns per cluster (colour or None,
         ambiguous) where ambiguous means another cone sits within a few pixels of its column."""
@@ -157,7 +158,7 @@ class Perception:
         conf = [1.0] * n                                  # a detector's confidence, when the blobs carry one
         self._conf = conf
         self._big = [False] * n                           # the box says big cone (see below)
-        if self.blobs and self.image_width:
+        if blobs and self.image_width:
             tol = self.p["match_px_frac"] * self.image_width
             fx = (self.image_width / 2.0) / math.tan(math.radians(self.p["camera_hfov_deg"]) / 2.0)
             # Joint assignment of boxes to lidar cones (the AMZ / MIT Driverless recipe: lidar gives the range, the
@@ -166,14 +167,14 @@ class Perception:
             # cluster's range; the cheapest one-to-one assignment over all pairs wins (Hungarian), so a big cone's
             # tall box goes to the cluster at the range that fits it, not to the small cone standing in front of it
             # on the same bearing. A box that fits no cluster, or a cone with no box, stays unmatched.
-            m = len(self.blobs)
+            m = len(blobs)
             cost = np.full((n, m), 1e6)
             big = np.zeros((n, m), dtype=bool)
             for i in range(n):
                 if math.isnan(cols[i]):
                     continue
                 rng = max(0.3, math.hypot(clusters[i][0] - self.p["camera_ahead"], clusters[i][1] - self.p["camera_lateral"]))
-                for k, b in enumerate(self.blobs):
+                for k, b in enumerate(blobs):
                     dc = abs(b[1] - cols[i])
                     if dc >= tol:
                         continue
@@ -193,7 +194,7 @@ class Perception:
             for i, k in zip(rows, colsk):
                 if cost[i, k] >= 1e6:
                     continue
-                b = self.blobs[k]
+                b = blobs[k]
                 colour[i], dim[i] = b[0], b[5]
                 if len(b) > 6:
                     conf[i] = float(b[6])
