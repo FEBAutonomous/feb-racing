@@ -36,6 +36,7 @@ class CnnPerception(Perception):
         self.asynchronous = True
         self.det_stamp = 0.0            # header stamp of the frame the current detections came from
         self.infer_ms = 0.0
+        self.error = ""                 # the last inference error, shown in the racer's status line
         self._latest = None
         self._lock = threading.Lock()
         self._wake = threading.Condition(self._lock)
@@ -60,8 +61,9 @@ class CnnPerception(Perception):
             t0 = time.time()
             try:
                 self._infer(msg)
-            except Exception:               # noqa: BLE001  (a bad frame must not kill the thread)
-                pass
+                self.error = ""
+            except Exception as e:          # noqa: BLE001  (a bad frame must not kill the thread; the racer logs the error)
+                self.error = "%s: %s" % (type(e).__name__, str(e)[:160])
             self.infer_ms = 1000.0 * (time.time() - t0)
 
     def _infer(self, msg):

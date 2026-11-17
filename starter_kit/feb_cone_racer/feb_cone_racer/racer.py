@@ -542,7 +542,10 @@ class Racer(Node):
         if self.close_at is not None and self.travelled >= self.close_at:
             self.finish_mapping()
         elif self.keyframes % 10 == 0:
-            self.get_logger().info("mapping: %d keyframes, %d landmarks, travelled %.1f m" % (self.keyframes, len(self.slam.lhat), self.travelled))
+            det = ""
+            if getattr(self.perception, "asynchronous", False):
+                det = ", detector %.0f ms" % self.perception.infer_ms + (" ERROR " + self.perception.error if self.perception.error else "")
+            self.get_logger().info("mapping: %d keyframes, %d landmarks, travelled %.1f m%s" % (self.keyframes, len(self.slam.lhat), self.travelled, det))
 
     def finish_mapping(self):
         """The map is complete: freeze it, repair the colours from the mapping-lap path, and
