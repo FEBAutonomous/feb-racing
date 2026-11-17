@@ -83,6 +83,7 @@ DEFAULTS = dict(
     track_repair=True,        # at closure: merge drift duplicates and fill clear gaps along each boundary (repair.py); off = the raw map
     repair_fill_ratio=1.7,    # a gap of at least this many spacings is a missing cone (or cones)
     repair_max_fill=3,        # at most this many cones filled into one gap
+    parallel_double_dist=0.9, # m, a same-coloured cone this close, 0.3 m farther from the path and never seen in the same scan makes this one an inward double (0 = off)
     repair_off_line=0.35,     # m, a cone whose lateral offset from the path differs from its chain neighbours' by more than this has strayed onto the track: dropped
     repair_dup_ratio=0.35,    # two cones of one colour closer than this share of the local spacing are one cone (cones can touch at a drain)
     close_delay_m=1.0,        # m driven on past the loop closure before the map freezes: the start gate gets its sightings from the front
@@ -661,6 +662,28 @@ class Racer(Node):
                         rep[i] = (BLUE if d_ > 0 else YELLOW) if left_is_blue else (YELLOW if d_ > 0 else BLUE)
             self.gate_ids = set(gate)           # the published map keeps these orange whatever the track builder repaints
             self.get_logger().info("gate: %d orange cones chosen (%s)" % (len(gate), ", ".join("left" if sides[i] > 0 else "right" for i in gate)))
+        # a pass that left the track files the boundary it drove along a second time, a few decimetres in: a cone of a
+        # colour with a same-coloured cone within parallel_double_dist that stands farther from the path by a clear
+        # margin and was never seen in the same scan is that inward double (the never-seen-together merge only reaches
+        # a drift double's distance; this one reaches a wrong pass's)
+        if p["parallel_double_dist"] > 0.0 and hasattr(self.slam, "kfs") and len(self.slam.kfs) == len(self.slam.lhat) and len(path) >= 8:
+            sides_all = np.array([side_of_path(path, q) for q in self.slam.lhat])
+            colours_now = np.array([int(rep[i]) if (rep is not None and rep[i] != UNKNOWN) else int(col[i]) for i in range(len(col))])
+            drop = np.zeros(len(self.slam.lhat), bool)
+            for i in range(len(self.slam.lhat)):
+                if colours_now[i] not in (BLUE, YELLOW) or i in getattr(self, "gate_ids", set()):
+                    continue
+                d = np.linalg.norm(self.slam.lhat - self.slam.lhat[i], axis=1)
+                for j in np.flatnonzero((d > 0.0) & (d < p["parallel_double_dist"]) & (colours_now == colours_now[i])):
+                    if abs(sides_all[j]) > abs(sides_all[i]) + 0.3 and np.sign(sides_all[j]) == np.sign(sides_all[i]) and len(self.slam.kfs[i] & self.slam.kfs[j]) <= 1:
+                        drop[i] = True
+                        break
+            if drop.any():
+                newidx = np.cumsum(~drop) - 1
+                self.gate_ids = {int(newidx[i]) for i in getattr(self, "gate_ids", set()) if not drop[i]}
+                self.slam.drop(~drop)
+                rep = self.slam.colour_override; col = self.slam.colour
+                self.get_logger().info("closure: %d inward double(s) of a boundary cone dropped" % int(drop.sum()))
         # track repair: the finished map read as two boundaries along the lap; drift duplicates merged, clear gaps
         # filled with cones interpolated along the path (repair.py; one switch, track_repair, to turn it off)
         self.inferred = np.zeros(len(self.slam.lhat), bool)

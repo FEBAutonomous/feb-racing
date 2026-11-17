@@ -75,6 +75,27 @@ def repair(lhat, colour, path, fill_ratio=1.7, max_fill=3, dup_ratio=0.35, min_c
                 continue
         order = np.argsort(sd[:, 0])
         idx, sd = idx[order], sd[order]
+        # two cones of one colour at the same place along the lap but at different distances from the path are one
+        # cone filed twice from two passes that disagreed (the drift of a pass that left the track): the one farther
+        # from the chain's usual offset goes
+        if len(idx) >= 6 and off_line > 0.0:
+            usual = float(np.median(np.abs(sd[:, 1])))
+            drop = np.zeros(len(idx), bool)
+            for a in range(len(idx)):
+                for b in range(a + 1, len(idx)):
+                    if drop[a] or drop[b]:
+                        continue
+                    ds_ = min(abs(sd[b, 0] - sd[a, 0]), total - abs(sd[b, 0] - sd[a, 0]))
+                    if ds_ < 0.3 and abs(sd[b, 1] - sd[a, 1]) > 0.3:
+                        worse = a if abs(abs(sd[a, 1]) - usual) > abs(abs(sd[b, 1]) - usual) else b
+                        drop[worse] = True
+            if drop.any():
+                keep[idx[drop]] = False
+                report["removed"] += int(drop.sum())
+                report["off_line"] = report.get("off_line", 0) + int(drop.sum())
+                idx, sd = idx[~drop], sd[~drop]
+                if len(idx) < 4:
+                    continue
         # a cone that has strayed off its boundary line: its lateral offset from the path differs from its
         # neighbours' along the chain by more than off_line (a double that drifted onto the track, a sighting of the
         # other boundary filed with this colour). The chain's offset profile is the median of the four neighbours
