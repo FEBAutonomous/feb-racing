@@ -43,6 +43,7 @@ class GraphSLAM:
         self.lidar_seen = np.zeros(0, dtype=int)   # per landmark: sightings the camera did not colour (lidar-only, see _admit_ghosts)
         self.cam_miss = np.zeros(0, dtype=int)     # per landmark: keyframes in a row it stood in the camera's view, close, and got no box
         self.ghost_cam_miss_max = 2                # a ghost track the camera looked at this often without a box is never promoted
+        self.ghost_cam_miss_max_wide = 4           # a wide one (a big cone candidate) gets a longer look: big cones are boxed less surely
         self.wide = np.zeros(0, dtype=int)         # per landmark: sightings as a big (wide) cluster; an orange sighting of weight 0 is one
         self.x.append(0)
         self.nvars = 2
@@ -239,7 +240,9 @@ class GraphSLAM:
                 # (cones a metre apart with a few decimetres of pose jitter otherwise swap votes)
                 ok = (d < self.new_landmark_dist) & ~taken
                 if colour[i] != UNKNOWN:
-                    ok &= (lcol == colour[i]) | (lcol == UNKNOWN)
+                    # ...except right on top of a landmark (0.3 m): a box of the other colour there is the detector
+                    # flickering on this cone, not a second cone; the votes settle it (filing it twice made doubles)
+                    ok &= (lcol == colour[i]) | (lcol == UNKNOWN) | (d < 0.3)
                 if ok.any():
                     k = int(np.flatnonzero(ok)[np.argmin(d[ok])])
                     j = k
@@ -261,8 +264,8 @@ class GraphSLAM:
             self.count[j] += 1
             if colour[i] == UNKNOWN or (colour[i] == ORANGE and weight[i] <= 0.0):      # a lidar sighting, uncoloured or wide
                 self.lidar_seen[j] += 1
-                if j < len(self.cam_miss) and i < len(in_cam) and in_cam[i] and self.wide[j] == 0:
-                    self.cam_miss[j] += 1          # the camera looked straight at it and drew no box (not a big cone)
+                if j < len(self.cam_miss) and i < len(in_cam) and in_cam[i]:
+                    self.cam_miss[j] += 1          # the camera looked straight at it and drew no box
             elif j < len(self.cam_miss):
                 self.cam_miss[j] = 0               # a box: it is a cone
             if colour[i] == ORANGE and weight[i] <= 0.0:
@@ -300,7 +303,7 @@ class GraphSLAM:
             hit["n"], hit["last"] = n + 1, kf
             hit["cam_miss"] = hit.get("cam_miss", 0) + int(gcam[i])
             hit["sightings"].append((kf, ghosts[i].copy(), c_i, w_i))
-            if hit["cam_miss"] >= self.ghost_cam_miss_max:
+            if hit["cam_miss"] >= (self.ghost_cam_miss_max_wide if c_i == ORANGE else self.ghost_cam_miss_max):
                 continue                        # the camera has looked at it, close, and never drew a box: not a cone
             if hit["n"] >= self.ghost_keyframes:
                 # promoted: this sighting becomes an observation now, the earlier ones are filed to their keyframes
@@ -474,6 +477,45 @@ class GraphSLAM:
         self.freeze_counts = (int(len(keep)), int(keep.sum()), int(merged.sum()))     # before, seen >= min_seen, after merge
         self.merge_log = getattr(self, "merge_log", [0, 0])
         self.frozen = True
+
+    def merge_live(self, radius=0.35):
+        """Mid-lap duplicate merge: two landmarks closer than `radius` whose colours do not disagree (same, or one
+        unknown) are one cone filed twice (drift between passes, a flickering box). The later one's observation rows
+        are re-pointed at the earlier one, its votes and counts pooled, and it leaves the arrays; its variable slot
+        keeps a tiny anchor so the system stays regular. Returns how many merged."""
+        merged = 0
+        i = 0
+        while i < len(self.lhat):
+            j = i + 1
+            while j < len(self.lhat):
+                dij = np.linalg.norm(self.lhat[i] - self.lhat[j])
+                ci, cj = int(self.colour[i]), int(self.colour[j])
+                if dij < radius and (ci == cj or ci == UNKNOWN or cj == UNKNOWN):
+                    li, lj = self.l[i], self.l[j]
+                    self.rows = [(r, (li if c == lj else li + 1 if c == lj + 1 else c), v) for r, c, v in self.rows]
+                    self._eq([(lj, 1e-3)], float(self.lhat[j, 0]) * 1e-3)        # the orphan variable stays pinned
+                    self._eq([(lj + 1, 1e-3)], float(self.lhat[j, 1]) * 1e-3)
+                    wi, wj = max(self.count[i], 1), max(self.count[j], 1)
+                    self.lhat[i] = (wi * self.lhat[i] + wj * self.lhat[j]) / (wi + wj)
+                    self.votes[i] += self.votes[j]
+                    self.count[i] += self.count[j]
+                    keep = np.ones(len(self.lhat), bool); keep[j] = False
+                    if len(self.lidar_seen) == len(keep):
+                        self.lidar_seen[i] += self.lidar_seen[j]
+                    if len(self.wide) == len(keep):
+                        self.wide[i] += self.wide[j]
+                    if len(self.cam_miss) == len(keep):
+                        self.cam_miss[i] = min(self.cam_miss[i], self.cam_miss[j])
+                    if hasattr(self, "kfs") and len(self.kfs) == len(keep):
+                        self.kfs[i] = self.kfs[i] | self.kfs[j]
+                    del self.l[j]
+                    self.drop(keep)
+                    self.last_matched = []
+                    merged += 1
+                    continue
+                j += 1
+            i += 1
+        return merged
 
     def drop(self, keep):
         """Keep only the landmarks flagged in `keep` (after freeze: the per-landmark arrays only)."""

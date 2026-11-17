@@ -81,9 +81,11 @@ DEFAULTS = dict(
     # isolated cone-sized clusters within lidar_cone_range, seen at lidar_cone_keyframes keyframes in the same place, and
     # kept at closure only with lidar_min_seen sightings; their colour comes from the side of the driven path. 0 = off
     lidar_cone_range=0.0, lidar_cone_keyframes=3, lidar_min_seen=3, cone_isolation=0.45,
-    lidar_cone_min_x=-0.3,    # m, lidar-only candidates must be at least this far ahead (negative: a little behind the lidar)
+    lidar_cone_min_x=0.0,     # m, lidar-only candidates must be at least this far ahead of the lidar (what is only ever beside or behind is not mapped)
     cam_check_range=4.0,      # m: a lidar-only candidate this close and inside the camera's view that the detector draws no box on,
     cam_miss_max=3,           # cam_miss_max keyframes in a row, is not a cone (a door jamb, a chair leg); 0 = off
+    cam_miss_max_wide=6,      # the same for a wide (big cone) candidate: the detector boxes big cones less surely
+    merge_live_dist=0.35,     # m: two landmarks this close whose colours do not disagree merge during the lap (0 = off)
     parked_restart=8,         # keyframes a parked car keeps before its map starts over (0: never)
     merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
     never_together_dist=0.4,  # m, at closure two landmarks never seen in one scan and closer than this are one cone (a drift double)
@@ -407,8 +409,9 @@ class Racer(Node):
             ghosts = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, w in picked]).reshape(-1, 2)
             ghost_colour = np.array([ORANGE if w >= p["big_cone_width"] > 0.0 else UNKNOWN for x, y, w in picked], dtype=int)   # a big cone is orange
             # which of them the camera is looking straight at, close enough for the detector: those are the camera's misses
-            # (not for a wide cluster: a big gate cone beside the start fills the frame or leaves it, box or no box)
-            ghost_in_cam = np.array([w < p["big_cone_width"] and self.in_camera(x, y) for x, y, w in picked], dtype=bool)
+            # (wide ones too: a door jamb or a wall end is a wide cluster, and a big cone the camera looks at between one
+            # and cam_check_range metres gets an orange box; the gate cones beside the start are outside the view)
+            ghost_in_cam = np.array([self.in_camera(x, y) for x, y, w in picked], dtype=bool)
 
         moving = self.scene_moving(msg)
         # "cones in view" counts what the lidar sees, coloured or not: at a hairpin the camera can
@@ -514,7 +517,9 @@ class Racer(Node):
         s = self.slam
         if self.p["cam_miss_max"] <= 0 or len(s.cam_miss) != len(s.lhat) or len(s.lhat) == 0:
             return np.zeros(len(s.lhat), dtype=bool)
-        return (s.votes[:, 1:].sum(axis=1) <= 0.0) & (s.cam_miss >= int(self.p["cam_miss_max"]))
+        wide = s.wide if len(s.wide) == len(s.lhat) else np.zeros(len(s.lhat), int)
+        limit = np.where(wide >= 1, int(self.p["cam_miss_max_wide"]), int(self.p["cam_miss_max"]))
+        return (s.votes[:, 1:].sum(axis=1) <= 0.0) & (s.cam_miss >= limit)
 
     def mapping_step(self, z_rel, colours, weights, ghosts=None, ghost_colour=None, ghost_in_cam=None):
         p = self.p
@@ -571,6 +576,8 @@ class Racer(Node):
         self.slam.merge_radius = float(p["merge_radius"])
         self.slam.never_together_dist = float(p["never_together_dist"])
         self.slam.add(self.since_key, z_rel, colours, weights, ghosts, ghost_colour, ghost_in_cam)
+        if p["merge_live_dist"] > 0.0 and self.slam.merge_live(p["merge_live_dist"]):
+            self._shown_colour = {}            # the merge renumbers the landmarks
         self.kf_log.append((float(self.last_t), float(self.yaw), float(self.since_key[0]), float(self.since_key[1])))   # per keyframe, for the freeze dump
         self.keyframes += 1
         self.since_key = np.zeros(2)
