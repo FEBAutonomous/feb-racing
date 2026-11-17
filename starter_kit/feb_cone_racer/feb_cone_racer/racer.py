@@ -76,8 +76,9 @@ DEFAULTS = dict(
     # lidar-only cones (the camera never coloured them, typically cones the car hugs): admitted to the map when they are
     # isolated cone-sized clusters within lidar_cone_range, seen at lidar_cone_keyframes keyframes in the same place, and
     # kept at closure only with lidar_min_seen sightings; their colour comes from the side of the driven path. 0 = off
-    lidar_cone_range=0.0, lidar_cone_keyframes=3, lidar_min_seen=4, cone_isolation=0.45,
+    lidar_cone_range=0.0, lidar_cone_keyframes=3, lidar_min_seen=3, cone_isolation=0.45,
     merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
+    never_together_dist=0.4,  # m, at closure two landmarks never seen in one scan and closer than this are one cone (a drift double)
     max_path_dist=0.0,        # m, at closure a landmark farther than this from the driven path is dropped (0 = off; the car config sets it)
     track_repair=True,        # at closure: merge drift duplicates and fill clear gaps along each boundary (repair.py); off = the raw map
     repair_fill_ratio=1.7,    # a gap of at least this many spacings is a missing cone (or cones)
@@ -87,8 +88,9 @@ DEFAULTS = dict(
     close_within=0.0,         # m, the lap closes on the first cones only once the car is this close to the start (0 = at once)
     gate_max_width=4.0,       # m, the farthest the two sides of the start gate can stand apart
     gate_pair_dist=0.75,      # m, the big cones of the start gate stand in pairs (or a row) with neighbours closer than this
-    gate_radius=3.5,          # m from the lap's start within which big (orange) cones stand; an orange or wide thing farther out is not a cone
+    gate_radius=4.5,          # m from the lap's start within which the gate's big cones stand; an orange or wide thing farther out is not a cone
     big_cone_width=0.11,      # m, at this lidar's height (near the tip of a small cone) a small cone shows 0.04-0.08 m, a big one 0.12-0.16; a cluster at least this wide may be a big cone, which stands only at the start gate (0 = off)
+    scan_odometry=True,       # mapping lap: the motion between scans from the lidar scan matched against the last keyframe scans (scanmatch.py); off = wheels + IMU
     odom_scale=1.0,           # wheel-speed distance scale on the mapping lap (1.0 until the 10 m roll is measured)
     camera_only_min_seen=0,   # with the lidar-only admission on: a camera-coloured landmark the lidar never confirmed needs this many sightings (0 = off)
     freeze_dump="",           # debug: write every landmark (position, votes, count, side of the path) to this JSON file at closure
@@ -131,6 +133,8 @@ class Racer(Node):
             self.lock_timer = self.create_timer(1.0, lambda: self.camera_lock.apply() and self.lock_timer.cancel())
         self.slam = GraphSLAM((0.0, 0.0), p["dx_weight"], p["z_weight"], p["new_landmark_dist"], p["icp_gate"],
                               icp_min_matches=int(p["icp_min_matches"]))
+        from .scanmatch import ScanOdometry
+        self.scan_odo = ScanOdometry()
         try:
             from .mpc import KinematicMPC
             # the MPC may not plan faster than the speed plan it is following
@@ -326,7 +330,14 @@ class Racer(Node):
         self.odo_speed = float(np.clip(self.speed, self.odo_speed - 6.0 * dt, self.odo_speed + 4.0 * dt))
         moving_now = self.prev_clusters is None or self.scene_moving(msg, peek=True)
         ds = self.odo_speed * dt * p["odom_scale"] if moving_now else 0.0
-        dx = np.array([ds * math.cos(self.yaw), ds * math.sin(self.yaw)])
+        if p["scan_odometry"] and self.mode == "MAPPING":
+            # the motion from the whole scan matched against the last keyframe scans (scanmatch.py); the wheels and
+            # the IMU only give it the starting guess. The heading it settles on is the heading the map is built in
+            dx, yaw_sm = self.scan_odo.update(msg, self.yaw, ds)
+            self.yaw = yaw_sm
+            ds = float(np.linalg.norm(dx))
+        else:
+            dx = np.array([ds * math.cos(self.yaw), ds * math.sin(self.yaw)])
         self.pose = self.pose + dx
         self.travelled += ds
         self.since_key += dx
@@ -488,6 +499,7 @@ class Racer(Node):
             self.slam.new_landmark_dist = float(np.clip(0.45 * self.cone_spacing, 0.25, p["new_landmark_dist"]))
         self.slam.ghost_keyframes = int(p["lidar_cone_keyframes"])
         self.slam.merge_radius = float(p["merge_radius"])
+        self.slam.never_together_dist = float(p["never_together_dist"])
         self.slam.add(self.since_key, z_rel, colours, weights, ghosts, ghost_colour)
         self.kf_log.append((float(self.last_t), float(self.yaw), float(self.since_key[0]), float(self.since_key[1])))   # per keyframe, for the freeze dump
         self.keyframes += 1
@@ -540,6 +552,8 @@ class Racer(Node):
             self.get_logger().info("map closed: sightings refiled through the solved poses, %d landmarks during the lap -> %d; seen >= %d: %d; after merging duplicates: %d (%d by distance, %d never seen together)"
                                    % (*self.slam.refiled, int(p["min_seen"]), self.slam.freeze_counts[1], self.slam.freeze_counts[2], *self.slam.merge_log))
         self.lap_times.append(self.last_t - self.lap_start_t)
+        if p["scan_odometry"]:
+            self.get_logger().info("scan odometry: %d keyframe scans in the local map, %d scans fell back to the wheels" % (len(self.scan_odo.keyframes), self.scan_odo.rejected))
         self.slam.colour_override = repair_by_path(self.slam.lhat, self.slam.colour, self.slam.xhat)
         # a cone the camera never coloured takes its side whatever its distance from the path (the repair only
         # recolours cones a clear track-width away; a hugged lidar-only cone sits right beside the path)
@@ -551,11 +565,30 @@ class Racer(Node):
                 sides_v = np.array([side_of_path(path, q) for q in self.slam.lhat])
                 agree = np.sum(((col == BLUE) & (sides_v > 0)) | ((col == YELLOW) & (sides_v < 0)))
                 left_is_blue = agree >= 0.5 * voted.sum()
-            weak = self.slam.votes[:, 1:].max(axis=1) < 1.0          # one doubtful reading at most
+            v2 = np.sort(self.slam.votes[:, 1:3], axis=1)
+            weak = (self.slam.votes[:, 1:].max(axis=1) < 1.0) | (v2[:, 1] - v2[:, 0] < 0.6)   # one doubtful reading, or blue and yellow neck and neck
+            # a cone the camera never settled takes the colour of its ring: the nearest two camera-coloured cones of
+            # one colour within a cone spacing and a half say which boundary it stands on. Only when they disagree,
+            # or there are none, does the side of the driven path decide (the path can leave the track)
+            sure = np.flatnonzero((col == BLUE) | (col == YELLOW)) if len(col) else np.zeros(0, int)
+            sure = np.array([i for i in sure if not weak[i]], int)
+            spacing = 1.0
+            if len(sure) >= 4:
+                dd = np.linalg.norm(self.slam.lhat[sure][:, None] - self.slam.lhat[sure][None], axis=2); np.fill_diagonal(dd, np.inf)
+                spacing = float(np.median(dd.min(axis=1)))
             for i in np.flatnonzero((col == UNKNOWN) | weak):
                 d = side_of_path(path, self.slam.lhat[i])
-                if rep[i] == UNKNOWN or (weak[i] and abs(d) > 0.3):
-                    rep[i] = (BLUE if d > 0 else YELLOW) if left_is_blue else (YELLOW if d > 0 else BLUE)
+                if rep[i] == UNKNOWN or weak[i]:
+                    by_ring = UNKNOWN
+                    if len(sure):
+                        dn = np.linalg.norm(self.slam.lhat[sure] - self.slam.lhat[i], axis=1)
+                        near2 = sure[np.argsort(dn)[:2]]
+                        if len(near2) == 2 and dn[np.argsort(dn)[1]] < 1.5 * spacing and col[near2[0]] == col[near2[1]]:
+                            by_ring = int(col[near2[0]])
+                    if by_ring != UNKNOWN:
+                        rep[i] = by_ring
+                    elif rep[i] == UNKNOWN or abs(d) > 0.3:
+                        rep[i] = (BLUE if d > 0 else YELLOW) if left_is_blue else (YELLOW if d > 0 else BLUE)
         # the start gate is two big orange cones on the left of the track and two on the right, close to where the lap
         # began. The map's orange is decided as that structure: on each side of the driven path the landmark near the
         # start with the strongest orange evidence (camera orange votes, big boxes, wide lidar clusters) is a gate
@@ -570,16 +603,24 @@ class Racer(Node):
             # a big cone is wide to the lidar whenever it is close: the camera's orange only counts on a cone the lidar
             # saw wide at least twice, and persistent width is evidence of its own (a couple of tall boxes on a small
             # cone are not)
-            evidence = np.where(wide >= 2, votes[:, 3], 0.0) + 0.3 * np.minimum(wide, 10)
+            # ...and a cone the camera called blue or yellow with conviction is a boundary cone, however big it looked
+            evidence = np.where(wide >= 2, votes[:, 3], 0.0) + 0.3 * np.minimum(wide, 10) - votes[:, 1:3].sum(axis=1)
             gate = []
             for sign in (1.0, -1.0):
                 cand = np.flatnonzero(near & (np.sign(sides) == sign) & (evidence >= 1.0) & (wide >= 2))
+                if p["debug"] or True:
+                    top = sorted(np.flatnonzero(near & (np.sign(sides) == sign)), key=lambda i: -evidence[i])[:4]
+                    self.get_logger().info("gate %s: candidates %s" % ("left" if sign > 0 else "right", [(int(i), round(float(evidence[i]), 1), int(wide[i]), round(float(np.linalg.norm(self.slam.lhat[i] - self.start[0])), 2)) for i in top]))
                 if not len(cand):
                     continue
                 i = int(cand[np.argmax(evidence[cand])])
                 gate.append(i)
                 d = np.linalg.norm(self.slam.lhat - self.slam.lhat[i], axis=1)
-                mates = [j for j in np.flatnonzero((d > 0.25) & (d < p["gate_pair_dist"]) & near & (np.sign(sides) == sign)) if j != i and wide[j] >= 2]
+                # the partner stands behind the first in the car's view: often a sliver to the lidar and never boxed,
+                # so it is any uncoloured cone the lidar kept seeing there, or one seen big at least once
+                lidar_seen = self.slam.lidar_seen if len(self.slam.lidar_seen) == len(self.slam.lhat) else np.zeros(len(self.slam.lhat), int)
+                mates = [j for j in np.flatnonzero((d > 0.25) & (d < p["gate_pair_dist"]) & near & (np.sign(sides) == sign))
+                         if j != i and votes[j, 1:3].sum() < 1.0 and (wide[j] >= 1 or lidar_seen[j] >= 2)]
                 if mates:
                     # the partner: co-visible if possible (two things seen at once are two things), else the nearest
                     cov = [j for j in mates if kfs is not None and len(kfs[i] & kfs[j]) >= 2]
@@ -1288,7 +1329,8 @@ class Racer(Node):
             # a cone the camera never coloured takes its side from the driven path once the map is closed
             # (camera votes are never overridden by the path: on a hand-driven lap the path is not the middle)
             rep = self.slam.colour_override
-            repaired = rep is not None and i < len(rep) and rep[i] in (BLUE, YELLOW, ORANGE) and (c == UNKNOWN or v.max() < 1.0)
+            v2s = np.sort(v[:2])
+            repaired = rep is not None and i < len(rep) and rep[i] in (BLUE, YELLOW, ORANGE) and (c == UNKNOWN or v.max() < 1.0 or v2s[1] - v2s[0] < 0.6)
             if repaired:
                 c = int(rep[i])                 # ...and so does a cone the camera coloured only once, doubtfully
             if i in getattr(self, "gate_ids", ()):

@@ -47,7 +47,7 @@ def racer_files(context):
         # cones the car hugs never enter the camera's view: the lidar maps them (isolated clusters within 2 m that
         # persist over keyframes), coloured by the side of the driven path at closure. racer.py lidar_cone_range
         overrides["lidar_cone_range"] = float(os.environ.get("FEB_LIDAR_CONE_RANGE", "3.5"))
-        overrides["camera_only_min_seen"] = 5  # a cone only the camera ever placed needs five sightings (a leg, a far cluster with a cone's colour)
+        overrides["camera_only_min_seen"] = 3  # a cone only the camera ever placed needs three sightings (a leg, a far cluster with a cone's colour)
     model = LaunchConfiguration("detector_model").perform(context)
     if model:
         overrides["detector_model"] = model

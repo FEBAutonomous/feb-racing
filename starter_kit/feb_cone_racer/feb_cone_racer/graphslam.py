@@ -58,6 +58,7 @@ class GraphSLAM:
         self.ghost_keyframes = 3
         self.ghost_radius = 0.3
         self.merge_radius = 0.25               # at closure, landmarks of one colour closer than this are one cone (racer: merge_radius)
+        self.never_together_dist = 0.4         # at closure, two landmarks never seen in one scan closer than this are one cone
 
     @property
     def colour(self):
@@ -433,7 +434,9 @@ class GraphSLAM:
                 self.merge_log = getattr(self, "merge_log", [0, 0])
                 # co-visibility: two cones standing half a metre apart are seen together in scan after scan; one cone
                 # filed twice (the early pass and the late pass of a drifting lap) never is
-                never_together = kfs is not None and len(kfs[i] & kfs[j]) <= 1 and dij < 0.7
+                # (two real cones standing in line along the car's view are never seen together either, so this
+                # only reaches as far as a drift double can be: with the scan odometry a few decimetres)
+                never_together = kfs is not None and len(kfs[i] & kfs[j]) <= 1 and dij < self.never_together_dist
                 if dij < radius_ij or never_together or same_spot:
                     self.merge_log[0 if dij < radius_ij else 1] += 1
                     if col[i] != col[j] and col[j] != UNKNOWN:          # the majority colour after pooling the votes
