@@ -41,6 +41,8 @@ class GraphSLAM:
         self.votes = np.zeros((0, 4))          # per landmark: [unused, blue, yellow, orange] weighted colour votes
         self.count = np.zeros(0, dtype=int)    # per landmark: observations
         self.lidar_seen = np.zeros(0, dtype=int)   # per landmark: sightings the camera did not colour (lidar-only, see _admit_ghosts)
+        self.cam_miss = np.zeros(0, dtype=int)     # per landmark: keyframes in a row it stood in the camera's view, close, and got no box
+        self.ghost_cam_miss_max = 2                # a ghost track the camera looked at this often without a box is never promoted
         self.wide = np.zeros(0, dtype=int)         # per landmark: sightings as a big (wide) cluster; an orange sighting of weight 0 is one
         self.x.append(0)
         self.nvars = 2
@@ -192,7 +194,7 @@ class GraphSLAM:
 
     # ------------------------------------------------------------ building the graph
 
-    def add(self, dx, z_rel, colour, weight=None, ghosts=None, ghost_colour=None):
+    def add(self, dx, z_rel, colour, weight=None, ghosts=None, ghost_colour=None, ghost_in_cam=None):
         """One keyframe: the car moved dx (world frame) since the last one and now sees cones
         at z_rel (world orientation, relative to the car) with colours `colour`; `weight` is how
         much each colour reading counts (1 camera-confirmed, less for a remembered colour).
@@ -202,6 +204,8 @@ class GraphSLAM:
         weight = np.ones(len(colour)) if weight is None else np.asarray(weight, float)
         ghosts = np.zeros((0, 2)) if ghosts is None else np.asarray(ghosts, float).reshape(-1, 2)
         ghost_colour = np.full(len(ghosts), UNKNOWN) if ghost_colour is None else np.asarray(ghost_colour, int)   # ORANGE for a big cluster
+        ghost_in_cam = np.zeros(len(ghosts), bool) if ghost_in_cam is None else np.asarray(ghost_in_cam, bool)   # stood in the camera's view, close
+        in_cam = np.zeros(len(z_rel), bool)           # camera observations are boxes: never a miss
         prev = self.x[-1]
         kf = len(self.x)
         self.obs.append((kf, z_rel.copy(), colour.copy(), weight.copy()))   # keyframe index into xhat, for refile()
@@ -219,8 +223,9 @@ class GraphSLAM:
         zw = zw @ R.T + t
         self.xhat[-1] = R @ guess + t
         if len(ghosts):
-            z_rel, colour, weight, ghost_rel = self._admit_ghosts(kf, z_rel, colour, weight, ghosts, R, t, ghost_colour)
+            z_rel, colour, weight, ghost_rel, extra_in_cam = self._admit_ghosts(kf, z_rel, colour, weight, ghosts, R, t, ghost_colour, ghost_in_cam)
             zw = np.vstack([zw, ghost_rel + self.xhat[-1]]) if len(ghost_rel) else zw
+            in_cam = np.append(in_cam, extra_in_cam)
         self.last_matched = []                  # landmarks this keyframe was associated with (loop closure looks at it)
         lcol = self.colour if len(self.lhat) else np.zeros(0, dtype=int)
         taken = np.zeros(len(self.lhat), dtype=bool)        # two cones in one scan are two cones: one observation per landmark per keyframe
@@ -246,6 +251,7 @@ class GraphSLAM:
                 self.votes = np.vstack([self.votes, np.zeros(4)])
                 self.count = np.append(self.count, 0)
                 self.lidar_seen = np.append(self.lidar_seen, 0)
+                self.cam_miss = np.append(self.cam_miss, 0)
                 self.wide = np.append(self.wide, 0)
                 self.l.append(self.nvars)
                 self.nvars += 2
@@ -255,26 +261,31 @@ class GraphSLAM:
             self.count[j] += 1
             if colour[i] == UNKNOWN or (colour[i] == ORANGE and weight[i] <= 0.0):      # a lidar sighting, uncoloured or wide
                 self.lidar_seen[j] += 1
+                if j < len(self.cam_miss) and i < len(in_cam) and in_cam[i] and self.wide[j] == 0:
+                    self.cam_miss[j] += 1          # the camera looked straight at it and drew no box (not a big cone)
+            elif j < len(self.cam_miss):
+                self.cam_miss[j] = 0               # a box: it is a cone
             if colour[i] == ORANGE and weight[i] <= 0.0:
                 self.wide[j] += 1
             w = self.z_weight
             self._eq([(self.l[j], w), (self.x[-1], -w)], z_rel[i, 0] * w)
             self._eq([(self.l[j] + 1, w), (self.x[-1] + 1, -w)], z_rel[i, 1] * w)
 
-    def _admit_ghosts(self, kf, z_rel, colour, weight, ghosts, R, t, ghost_colour=None):
+    def _admit_ghosts(self, kf, z_rel, colour, weight, ghosts, R, t, ghost_colour=None, ghost_in_cam=None):
         """Lidar-only candidates of this keyframe. One within 0.6 of the gate of a landmark is a sighting
         of it (an uncoloured observation: a position edge and a count, no colour vote). The rest go to the
         ghost tracks; a track seen at ghost_keyframes keyframes is promoted: its earlier sightings are
         refiled as observations too, so refile() and freeze() treat the cone like any other."""
         gw = (ghosts + self.xhat[-1])
         gc = np.full(len(gw), UNKNOWN) if ghost_colour is None else ghost_colour
-        extra_rel, extra_col, extra_w = [], [], []
+        gcam = np.zeros(len(gw), bool) if ghost_in_cam is None else ghost_in_cam
+        extra_rel, extra_col, extra_w, extra_cam = [], [], [], []
         for i in range(len(gw)):
             c_i, w_i = (int(gc[i]), 0.0) if gc[i] != UNKNOWN else (UNKNOWN, 0.0)     # a wide cluster: a size sighting (ORANGE, weight 0), no colour vote
             if len(self.lhat):
                 d = np.linalg.norm(self.lhat - gw[i], axis=1)
                 if d.min() < 0.6 * self.new_landmark_dist:
-                    extra_rel.append(ghosts[i]); extra_col.append(c_i); extra_w.append(w_i)
+                    extra_rel.append(ghosts[i]); extra_col.append(c_i); extra_w.append(w_i); extra_cam.append(bool(gcam[i]))
                     continue
             hit = None
             for g in self.ghosts:
@@ -282,15 +293,18 @@ class GraphSLAM:
                     hit = g
                     break
             if hit is None:
-                self.ghosts.append({"pos": gw[i].copy(), "n": 1, "last": kf, "sightings": [(kf, ghosts[i].copy(), c_i, w_i)]})
+                self.ghosts.append({"pos": gw[i].copy(), "n": 1, "last": kf, "cam_miss": int(gcam[i]), "sightings": [(kf, ghosts[i].copy(), c_i, w_i)]})
                 continue
             n = hit["n"]
             hit["pos"] = (hit["pos"] * n + gw[i]) / (n + 1)
             hit["n"], hit["last"] = n + 1, kf
+            hit["cam_miss"] = hit.get("cam_miss", 0) + int(gcam[i])
             hit["sightings"].append((kf, ghosts[i].copy(), c_i, w_i))
+            if hit["cam_miss"] >= self.ghost_cam_miss_max:
+                continue                        # the camera has looked at it, close, and never drew a box: not a cone
             if hit["n"] >= self.ghost_keyframes:
                 # promoted: this sighting becomes an observation now, the earlier ones are filed to their keyframes
-                extra_rel.append(ghosts[i]); extra_col.append(c_i); extra_w.append(w_i)
+                extra_rel.append(ghosts[i]); extra_col.append(c_i); extra_w.append(w_i); extra_cam.append(bool(gcam[i]))
                 for k0, z0, c0, w0 in hit["sightings"][:-1]:
                     for j, (k, zr, cc, ww) in enumerate(self.obs):
                         if k == k0:
@@ -300,12 +314,12 @@ class GraphSLAM:
         # tracks not seen for a while are dropped (a passer-by, a speck)
         self.ghosts = [g for g in self.ghosts if kf - g["last"] <= 6]
         if not extra_rel:
-            return z_rel, colour, weight, np.zeros((0, 2))
+            return z_rel, colour, weight, np.zeros((0, 2)), np.zeros(0, bool)
         extra_rel = np.array(extra_rel).reshape(-1, 2)
         # the current keyframe's observation record grows by the admitted ghosts
         k, zr, cc, ww = self.obs[-1]
         self.obs[-1] = (k, np.vstack([zr, extra_rel]), np.append(cc, extra_col), np.append(ww, extra_w))
-        return (np.vstack([z_rel, extra_rel]), np.append(colour, extra_col).astype(int), np.append(weight, extra_w), extra_rel)
+        return (np.vstack([z_rel, extra_rel]), np.append(colour, extra_col).astype(int), np.append(weight, extra_w), extra_rel, np.array(extra_cam, bool))
 
     def solve(self):
         r, c, v = zip(*self.rows)
@@ -364,6 +378,7 @@ class GraphSLAM:
         self.votes = np.array(votes).reshape(-1, 4)
         self.count = np.array(counts, dtype=int)
         self.lidar_seen = np.array(lseen, dtype=int)
+        self.cam_miss = np.zeros(len(lseen), dtype=int)       # the camera check was applied live; the refiled map starts clean
         self.wide = np.array(wide, dtype=int)
         self.kfs = kfs                         # keyframes each landmark was seen at: the co-visibility test in freeze()
 
@@ -452,6 +467,7 @@ class GraphSLAM:
                     merged[j] = False
         self.lhat, self.votes, self.count = lhat[merged], votes[merged], count[merged]
         self.lidar_seen = (self.lidar_seen[keep] if len(self.lidar_seen) == len(keep) else np.zeros(int(keep.sum()), dtype=int))[merged]
+        self.cam_miss = (self.cam_miss[keep] if len(self.cam_miss) == len(keep) else np.zeros(int(keep.sum()), dtype=int))[merged]
         self.wide = wide_k[merged]
         if kfs is not None:
             self.kfs = [k for k, ok in zip(kfs, merged) if ok]
@@ -465,6 +481,8 @@ class GraphSLAM:
         self.lhat, self.votes, self.count = self.lhat[keep], self.votes[keep], self.count[keep]
         if len(self.lidar_seen) == len(keep):
             self.lidar_seen = self.lidar_seen[keep]
+        if len(self.cam_miss) == len(keep):
+            self.cam_miss = self.cam_miss[keep]
         if len(self.wide) == len(keep):
             self.wide = self.wide[keep]
         if hasattr(self, "kfs") and len(self.kfs) == len(keep):
