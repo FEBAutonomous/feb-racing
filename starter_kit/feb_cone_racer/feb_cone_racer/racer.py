@@ -471,7 +471,8 @@ class Racer(Node):
             # ...except while the car still waits at the start line: a keyframe every half second there, so the gate
             # cones ahead (the only time the camera sees them from the front, before they are beside the car) get
             # their sightings in before the lap moves off
-            waiting = self.travelled < 0.5 and self.kf_log and self.last_t - self.kf_log[-1][0] >= 0.5
+            # (a handful of them: a car parked at the line for minutes must not fill the graph with still frames)
+            waiting = self.travelled < 0.5 and self.kf_log and self.last_t - self.kf_log[-1][0] >= 0.5 and self.keyframes < 8
             if not waiting:
                 return
         # back near the start with the orange gate in view: close the loop with a wide net, so
