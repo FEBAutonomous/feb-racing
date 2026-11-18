@@ -91,6 +91,7 @@ DEFAULTS = dict(
                               # column, range from the lidar beams there, checked against the floor-row range (0 = off)
     floor_fit_min=10,         # lidar-matched boxes (prior included) the floor-row range model needs before it is trusted
     camera_only_range=4.0,    # m: a camera-first cone no farther than this (the floor-row range is good to a tenth of the range)
+    colour_margin_live=0.8,   # votes: the leading colour must beat the runner-up by this before the live map shows it (else grey)
     camera_gate=0.9,          # m: a camera-placed observation (a camera-first box, a big cone at its box bearing) joins a cone this
                               # far away, and never opens a new cone within new_landmark_dist of one that exists
     floor_row_b0=350.0, floor_row_b1=70.0, floor_prior_n=10.0,   # prior for that model: bottom row = b0 + b1/range on this camera (the bag fits:
@@ -1511,9 +1512,22 @@ class Racer(Node):
             prev = shown.get(i)
             if not repaired and prev not in (None, UNKNOWN) and c != UNKNOWN and prev != c and v[c - 1] - v[prev - 1] < 1.0:
                 c = prev
+            # the evidence behind the colour: log-odds of the leading colour against the runner-up (votes are
+            # likelihood weights, so the margin is the log-odds up to a constant). Until it clears colour_margin_live
+            # the map says grey: a cone whose colour the camera has not settled is shown as such, not guessed
+            vs = np.sort(v)[::-1]
+            margin = float(vs[0] - vs[1]) if len(vs) > 1 else float(vs[0]) if len(vs) else 0.0
+            if not repaired and not self.slam.frozen and c != UNKNOWN and c != ORANGE and margin < self.p["colour_margin_live"]:
+                c = UNKNOWN
             shown[i] = c
             q = Pose()
             q.position.x, q.position.y, q.orientation.w = float(x), float(y), float(c)
+            # the evidence rides along: sightings, colour margin, and whether the lidar ever placed it
+            q.orientation.x = float(counts[i]) if i < len(counts) else 0.0
+            q.orientation.y = margin
+            lidar_seen = self.slam.lidar_seen[i] if i < len(self.slam.lidar_seen) else 0
+            wide = self.slam.wide[i] if i < len(self.slam.wide) else 0
+            q.orientation.z = 1.0 if (lidar_seen > 0 or wide > 0 or v.sum() <= 0.0) else 2.0     # 1 the lidar placed it, 2 the camera alone
             inf = getattr(self, "inferred", None)
             if inf is not None and i < len(inf) and inf[i]:
                 q.position.z = 1.0                      # filled in by the track repair, not seen

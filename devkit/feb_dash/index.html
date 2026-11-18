@@ -408,8 +408,17 @@
       if (isMap && !layers.map) continue;
       const rad = Math.max(2.5 * dpr, (isMap ? 0.14 : 0.1) * s);
       for (const p of t.data.pts) { const w = toWorld(p, t.data.frame); const c = COL[p[2]] || COL[0];
-        ctx.beginPath(); ctx.arc(X(w[0]), Y(w[1]), rad, 0, Math.PI * 2);
-        if (isMap) { ctx.fillStyle = c + "cc"; ctx.fill(); ctx.strokeStyle = "#0b0e15"; ctx.lineWidth = 1.5 * dpr; ctx.stroke(); } else { ctx.fillStyle = c; ctx.fill(); } }
+        // the map's evidence: p[3] sightings (a cone fades in: 2 sightings faint, 10 solid), p[4] colour margin, p[5] 1 lidar / 2 camera
+        // placed (a camera-placed cone wears a dashed ring), p[6] 1 filled in by the track repair (hollow)
+        const n = isMap && p.length > 3 ? p[3] : 10, conf = Math.max(0.25, Math.min(1, (n - 1) / 9));
+        const r = isMap ? rad * (0.6 + 0.4 * conf) : rad;
+        ctx.beginPath(); ctx.arc(X(w[0]), Y(w[1]), r, 0, Math.PI * 2);
+        if (isMap) {
+          const alpha = Math.round(255 * (0.35 + 0.65 * conf)).toString(16).padStart(2, "0");
+          if (p.length > 6 && p[6]) { ctx.strokeStyle = c; ctx.lineWidth = 2 * dpr; ctx.stroke(); }
+          else { ctx.fillStyle = c + alpha; ctx.fill(); ctx.strokeStyle = "#0b0e15"; ctx.lineWidth = 1.5 * dpr; ctx.setLineDash(p.length > 5 && p[5] === 2 ? [3 * dpr, 3 * dpr] : []); ctx.stroke(); ctx.setLineDash([]); }
+          if (p.length > 3 && s > 40) { ctx.fillStyle = "#aab2c5"; ctx.font = `${Math.round(9 * dpr)}px Inter`; ctx.textAlign = "left"; ctx.fillText(String(p[3]), X(w[0]) + r + 2 * dpr, Y(w[1]) - r); }
+        } else { ctx.fillStyle = c; ctx.fill(); } }
     }
     // target
     if (fresh("/feb/target")) { const p = T["/feb/target"].data; const w = toWorld([p.x, p.y], p.frame); ctx.strokeStyle = "#ff5c9a"; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(X(w[0]), Y(w[1]), Math.max(4 * dpr, 0.2 * s), 0, Math.PI * 2); ctx.stroke(); }

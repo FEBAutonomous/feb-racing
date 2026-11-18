@@ -65,7 +65,9 @@ def ser_pose_stamped(m):
 
 def ser_pose_array(m):
     # the racers put the cone colour code in orientation.w (0 unknown, 1 blue, 2 yellow, 3 orange)
-    pts = [[r2(p.position.x), r2(p.position.y), int(round(p.orientation.w))] for p in m.poses]
+    # ...and the cone racer's map adds the evidence: orientation.x sightings, .y colour margin (log-odds in votes),
+    # .z 1 lidar-placed / 2 camera-placed, position.z 1 for a cone the track repair filled in
+    pts = [[r2(p.position.x), r2(p.position.y), int(round(p.orientation.w)), int(round(p.orientation.x)), r2(p.orientation.y), int(round(p.orientation.z)), int(round(p.position.z))] for p in m.poses]
     return {"frame": m.header.frame_id, "pts": pts}
 
 
