@@ -196,7 +196,7 @@ class GraphSLAM:
 
     # ------------------------------------------------------------ building the graph
 
-    def add(self, dx, z_rel, colour, weight=None, ghosts=None, ghost_colour=None, ghost_in_cam=None):
+    def add(self, dx, z_rel, colour, weight=None, ghosts=None, ghost_colour=None, ghost_in_cam=None, loose=None, loose_gate=0.9):
         """One keyframe: the car moved dx (world frame) since the last one and now sees cones
         at z_rel (world orientation, relative to the car) with colours `colour`; `weight` is how
         much each colour reading counts (1 camera-confirmed, less for a remembered colour).
@@ -208,6 +208,9 @@ class GraphSLAM:
         ghost_colour = np.full(len(ghosts), UNKNOWN) if ghost_colour is None else np.asarray(ghost_colour, int)   # ORANGE for a big cluster
         ghost_in_cam = np.zeros(len(ghosts), bool) if ghost_in_cam is None else np.asarray(ghost_in_cam, bool)   # stood in the camera's view, close
         in_cam = np.zeros(len(z_rel), bool)           # camera observations are boxes: never a miss
+        loose = np.zeros(len(z_rel), bool) if loose is None else np.asarray(loose, bool).reshape(-1)
+        if len(loose) != len(z_rel):
+            loose = np.zeros(len(z_rel), bool)
         prev = self.x[-1]
         kf = len(self.x)
         self.obs.append((kf, z_rel.copy(), colour.copy(), weight.copy()))   # keyframe index into xhat, for refile()
@@ -228,26 +231,30 @@ class GraphSLAM:
             z_rel, colour, weight, ghost_rel, extra_in_cam = self._admit_ghosts(kf, z_rel, colour, weight, ghosts, R, t, ghost_colour, ghost_in_cam)
             zw = np.vstack([zw, ghost_rel + self.xhat[-1]]) if len(ghost_rel) else zw
             in_cam = np.append(in_cam, extra_in_cam)
+            loose = np.append(loose, np.zeros(len(extra_in_cam), bool))
         self.last_matched = []                  # landmarks this keyframe was associated with (loop closure looks at it)
         lcol = self.colour if len(self.lhat) else np.zeros(0, dtype=int)
         taken = np.zeros(len(self.lhat), dtype=bool)        # two cones in one scan are two cones: one observation per landmark per keyframe
         order = np.argsort(np.linalg.norm(z_rel, axis=1)) if len(z_rel) else []   # nearest first: the surest associations go first
         for i in order:
             j = None
+            gate = loose_gate if loose[i] else self.new_landmark_dist
             if len(self.lhat):
                 d = np.linalg.norm(self.lhat - zw[i], axis=1)
                 # colour is part of the association: within the gate, the nearest landmark of this colour (or
                 # one not yet coloured); a landmark of another colour standing just as close is a different cone
                 # (cones a metre apart with a few decimetres of pose jitter otherwise swap votes)
-                ok = (d < self.new_landmark_dist) & ~taken
+                ok = (d < gate) & ~taken
                 if colour[i] != UNKNOWN:
                     # ...except right on top of a landmark (0.3 m): a box of the other colour there is the detector
                     # flickering on this cone, not a second cone; the votes settle it (filing it twice made doubles)
-                    ok &= (lcol == colour[i]) | (lcol == UNKNOWN) | (d < 0.3)
+                    ok &= (lcol == colour[i]) | (lcol == UNKNOWN) | (d < (0.5 if loose[i] else 0.3))
                 if ok.any():
                     k = int(np.flatnonzero(ok)[np.argmin(d[ok])])
                     j = k
                     self.last_matched.append(k)
+                elif loose[i] and (d < self.new_landmark_dist).any():
+                    continue            # a camera-placed sighting next to a cone it could not join: no new cone from it
             if j is None:
                 j = len(self.lhat)
                 self.lhat = np.vstack([self.lhat, zw[i]])

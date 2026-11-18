@@ -90,6 +90,8 @@ DEFAULTS = dict(
     camera_only_conf=0.5,     # a box at least this sure that fits no lidar cluster becomes a cone on its own: bearing from the
                               # column, range from the lidar beams there, checked against the floor-row range (0 = off)
     floor_fit_min=10,         # lidar-matched boxes (prior included) the floor-row range model needs before it is trusted
+    camera_gate=0.9,          # m: a camera-placed observation (a camera-first box, a big cone at its box bearing) joins a cone this
+                              # far away, and never opens a new cone within new_landmark_dist of one that exists
     floor_row_b0=350.0, floor_row_b1=70.0, floor_prior_n=10.0,   # prior for that model: bottom row = b0 + b1/range on this camera (the bag fits:
                               # UAB 346 + 53/r, corridor 358 + 95/r), worth floor_prior_n matched boxes; 0 = no prior
     parked_restart=8,         # keyframes a parked car keeps before its map starts over (0: never)
@@ -398,6 +400,8 @@ class Racer(Node):
         # and drift duplicates, 51 -> 192 landmarks for 62 cones; the camera's confirmation is the filter.
         # detector:=none maps them anyway, as a diagnostic of the mapper alone: 123 "cones" there.)
         z_rel = np.array([[cy * x - sy * y, sy * x + cy * y] for x, y, c, w in obs]).reshape(-1, 2)
+        loose_set = set(getattr(self.perception, "loose", []))
+        loose = np.array([(x, y) in loose_set for x, y, c, w in obs], dtype=bool)         # camera-placed observations
         colours = np.array([c for _, _, c, _ in obs], dtype=int)
         weights = np.array([w for _, _, _, w in obs], dtype=float)
         # lidar-only cone candidates: isolated clusters near the car (see lidar_cone_range); GraphSLAM admits them
@@ -431,7 +435,7 @@ class Racer(Node):
             steer, throttle = self.follow_rungs(clusters, dt, p["order_timeout"]) or self.follow_local(clusters, cones, dt)
             self.ordering_step()
         elif self.mode == "MAPPING":
-            self.mapping_step(z_rel, colours, weights, ghosts, ghost_colour, ghost_in_cam)
+            self.mapping_step(z_rel, colours, weights, ghosts, ghost_colour, ghost_in_cam, loose)
             if len(self.slam.lhat) >= 4:
                 self.pub_map.publish(self.map_message())      # the growing map, every scan: the live ordering starts at the car
             local = self.follow_rungs(clusters, dt)
@@ -527,7 +531,7 @@ class Racer(Node):
         limit = np.where(wide >= 1, int(self.p["cam_miss_max_wide"]) if self.p["cam_miss_max_wide"] > 0 else 10 ** 6, int(self.p["cam_miss_max"]))
         return (s.votes[:, 1:].sum(axis=1) <= 0.0) & (s.cam_miss >= limit)
 
-    def mapping_step(self, z_rel, colours, weights, ghosts=None, ghost_colour=None, ghost_in_cam=None):
+    def mapping_step(self, z_rel, colours, weights, ghosts=None, ghost_colour=None, ghost_in_cam=None, loose=None):
         p = self.p
         if self.slam.frozen:
             return
@@ -581,7 +585,7 @@ class Racer(Node):
         self.slam.ghost_keyframes = int(p["lidar_cone_keyframes"])
         self.slam.merge_radius = float(p["merge_radius"])
         self.slam.never_together_dist = float(p["never_together_dist"])
-        self.slam.add(self.since_key, z_rel, colours, weights, ghosts, ghost_colour, ghost_in_cam)
+        self.slam.add(self.since_key, z_rel, colours, weights, ghosts, ghost_colour, ghost_in_cam, loose=loose, loose_gate=p["camera_gate"])
         if p["merge_live_dist"] > 0.0 and self.slam.merge_live(p["merge_live_dist"], p["merge_never_together"]):
             self._shown_colour = {}            # the merge renumbers the landmarks
         self.kf_log.append((float(self.last_t), float(self.yaw), float(self.since_key[0]), float(self.since_key[1])))   # per keyframe, for the freeze dump

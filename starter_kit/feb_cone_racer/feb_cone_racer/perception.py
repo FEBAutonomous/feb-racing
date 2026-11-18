@@ -441,9 +441,13 @@ class Perception:
                         break
                 self.unknown.append((rx, ry)); self.unknown_isolated.append(iso[i]); self.unknown_width.append(wid[i])
             result = fixed
+        # observations the camera placed (a camera-first box, a big cone moved to its box bearing) are less precise than
+        # a lidar cluster: the graph associates them with a wider gate and never opens a new cone next to one that
+        # exists (see GraphSLAM.add loose=)
+        self.loose = [(sx, sy) for sx, sy in getattr(self, "_shift", {}).values()]
         for cx, cy, cc, cw in getattr(self, "camera_only", []):
             # not within half a metre of an observation the lidar already made: the same cone twice in one scan would
             # file as two landmarks (one observation per landmark per keyframe) that are then "seen together" for good
             if all(math.hypot(cx - rx, cy - ry) > 0.5 for rx, ry, _, _ in result):
-                result.append((cx, cy, cc, cw))
+                result.append((cx, cy, cc, cw)); self.loose.append((cx, cy))
         return result
