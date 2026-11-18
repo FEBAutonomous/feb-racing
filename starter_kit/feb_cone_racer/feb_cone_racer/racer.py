@@ -90,6 +90,7 @@ DEFAULTS = dict(
     camera_only_conf=0.5,     # a box at least this sure that fits no lidar cluster becomes a cone on its own: bearing from the
                               # column, range from the lidar beams there, checked against the floor-row range (0 = off)
     floor_fit_min=10,         # lidar-matched boxes (prior included) the floor-row range model needs before it is trusted
+    camera_only_range=4.0,    # m: a camera-first cone no farther than this (the floor-row range is good to a tenth of the range)
     camera_gate=0.9,          # m: a camera-placed observation (a camera-first box, a big cone at its box bearing) joins a cone this
                               # far away, and never opens a new cone within new_landmark_dist of one that exists
     floor_row_b0=350.0, floor_row_b1=70.0, floor_prior_n=10.0,   # prior for that model: bottom row = b0 + b1/range on this camera (the bag fits:

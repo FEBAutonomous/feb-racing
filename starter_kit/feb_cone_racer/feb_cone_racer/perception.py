@@ -300,8 +300,8 @@ class Perception:
                 if len(b) <= 6 or float(b[6]) < self.p["camera_only_conf"] or b[5]:
                     continue
                 rf = self.floor_range(b[3])
-                if rf is None or rf > self.p["max_range"]:
-                    continue
+                if rf is None or rf > min(self.p["max_range"], self.p.get("camera_only_range", 4.0)):
+                    continue                               # the floor row's range is good to a tenth: not past four metres
                 bearing = math.atan((self.image_width / 2.0 + self.p["camera_col_bias"] - b[1]) / fx) - yaw_rate * (self.p["camera_lag_s"] + getattr(self, "extra_lag", 0.0))
                 cx, cy = rf * math.cos(bearing) + self.p["camera_ahead"], rf * math.sin(bearing) + self.p["camera_lateral"]
                 lb = math.atan2(cy, cx)
