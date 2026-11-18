@@ -89,7 +89,9 @@ DEFAULTS = dict(
     merge_never_together=0.5, # m: so do two this close that no keyframe saw together (1.2x that for an orange pair)
     camera_only_conf=0.5,     # a box at least this sure that fits no lidar cluster becomes a cone on its own: bearing from the
                               # column, range from the lidar beams there, checked against the floor-row range (0 = off)
-    floor_fit_min=30,         # lidar-matched boxes the floor-row range model needs before it is trusted
+    floor_fit_min=10,         # lidar-matched boxes (prior included) the floor-row range model needs before it is trusted
+    floor_row_b0=350.0, floor_row_b1=70.0, floor_prior_n=10.0,   # prior for that model: bottom row = b0 + b1/range on this camera (the bag fits:
+                              # UAB 346 + 53/r, corridor 358 + 95/r), worth floor_prior_n matched boxes; 0 = no prior
     parked_restart=8,         # keyframes a parked car keeps before its map starts over (0: never)
     merge_radius=0.25,        # m, at closure two landmarks of one colour closer than this are one cone
     never_together_dist=0.4,  # m, at closure two landmarks never seen in one scan and closer than this are one cone (a drift double)
