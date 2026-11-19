@@ -1,0 +1,57 @@
+{
+ "schema": 1,
+ "id": "20261119-041716-Jeboba",
+ "event": "practice",
+ "team": "Jeboba",
+ "image": "ghcr.io/febautonomous/feb-devkit:latest",
+ "image_digest": "ghcr.io/febautonomous/feb-devkit@sha256:a2d7ffbf1819fbfc6e88dbb84f0adfac061206994c5947f805bc67dc0793893e",
+ "track": "loop_cones",
+ "mode": "time-attack",
+ "rules": {
+  "laps": 10,
+  "warmup_laps": 1,
+  "collision_penalty_s": 10.0,
+  "max_collisions": 10,
+  "timeout_s": 300.0
+ },
+ "started_at": "2026-11-19T12:17:16+00:00",
+ "duration_s": 127.33,
+ "status": "finished",
+ "laps_completed": 11,
+ "real_time_factor": 1.0,
+ "warmup_s": 18.6354,
+ "lap_times": [
+  10.903,
+  10.428,
+  10.325,
+  10.384,
+  10.44,
+  10.373,
+  10.459,
+  10.38,
+  10.389,
+  10.424
+ ],
+ "collisions": 0,
+ "collision_times": [],
+ "penalty_s": 0.0,
+ "total_s": 104.502,
+ "best_lap_s": 10.325,
+ "restricted_subscribers": {
+  "/autodrive/roboracer_1/lap_count": [
+   "_NODE_NAME_UNKNOWN_"
+  ]
+ },
+ "verified": false,
+ "runner": "wifi-10-45-64-24.wifi.berkeley.edu",
+ "error": null,
+ "driver": {
+  "name": "mppi_cone_racer",
+  "kind": "cones",
+  "stack": "ros2 launch mppi_cone_racer race.launch.py mode:=trackdrive",
+  "adapter": "speed_per_throttle=25.11,throttle_kp=0.0,throttle_ki=0.0,throttle_slew=100.0,speed_window=0.05",
+  "packages": [
+   "mppi_cone_racer"
+  ]
+ }
+}
