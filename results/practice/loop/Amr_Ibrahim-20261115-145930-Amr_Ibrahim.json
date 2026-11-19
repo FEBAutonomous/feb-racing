@@ -1,0 +1,54 @@
+{
+ "schema": 1,
+ "id": "20261115-145930-Amr_Ibrahim",
+ "event": "practice",
+ "team": "Amr Ibrahim",
+ "image": "ghcr.io/febautonomous/feb-devkit:latest",
+ "image_digest": "ghcr.io/febautonomous/feb-devkit@sha256:bc207c832d9d9d2609371f8753c095af38110febfef08abeda5b0c246fbeee40",
+ "track": "loop",
+ "mode": "time-attack",
+ "rules": {
+  "laps": 10,
+  "warmup_laps": 1,
+  "collision_penalty_s": 10.0,
+  "max_collisions": 10,
+  "timeout_s": 300.0
+ },
+ "started_at": "2026-11-15T22:59:30+00:00",
+ "duration_s": 166.82,
+ "status": "finished",
+ "laps_completed": 11,
+ "real_time_factor": 0.999,
+ "warmup_s": 56.4466,
+ "lap_times": [
+  10.61,
+  10.419,
+  10.41,
+  10.399,
+  10.395,
+  10.43,
+  10.42,
+  10.408,
+  10.435,
+  10.43
+ ],
+ "collisions": 0,
+ "collision_times": [],
+ "penalty_s": 0.0,
+ "total_s": 104.352,
+ "best_lap_s": 10.395,
+ "restricted_subscribers": {},
+ "verified": false,
+ "runner": "AmrsLaptop",
+ "error": null,
+ "driver": {
+  "name": "feb_wall_racer",
+  "kind": "walls",
+  "stack": "ros2 launch feb_wall_racer drive.launch.py mode:=trackdrive",
+  "adapter": "speed_per_throttle=25.11,throttle_kp=0.0,throttle_ki=0.0,throttle_slew=100.0,speed_window=0.05",
+  "packages": [
+   "feb_wall_racer",
+   "feb_wall_racer_msgs"
+  ]
+ }
+}
